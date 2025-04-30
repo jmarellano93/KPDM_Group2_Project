@@ -3,13 +3,12 @@ from pyswip import Prolog
 
 prolog = Prolog()
 
-# Convert path to an absolute, Prolog-safe format
+# Get absolute path to the Prolog file and fix slashes
 prolog_file = os.path.join(os.path.dirname(__file__), "..", "prolog", "risk_rules.pl")
 prolog_file = os.path.abspath(prolog_file).replace("\\", "/")  # forward slashes
 
-# Wrap in double quotes for Prolog: consult("C:/path/to/file.pl")
-consult_command = f'consult("{prolog_file}")'
-prolog.consult(consult_command)
+# Now directly consult the file path (no extra quoting)
+prolog.consult(prolog_file)
 
 def assess_risk(margin, proj, sia, contract, rel, client):
     query = (
