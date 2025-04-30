@@ -3,16 +3,15 @@ from pyswip import Prolog
 
 prolog = Prolog()
 
-# Absolute path with forward slashes, passed as raw string
-prolog_path = os.path.abspath(
+# Get absolute Windows-style path and double escape backslashes
+prolog_file = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "prolog", "risk_rules.pl")
-).replace("\\", "/")
+).replace("\\", "\\\\")
 
-# Print for verification
-print("CONSULTING:", prolog_path)
+print("CONSULTING:", prolog_file)  # Confirm it's double-backslashed
 
-# Now consult using the forward-slash path
-prolog.consult(prolog_path)
+prolog.consult(prolog_file)
+
 
 def assess_risk(margin, proj, sia, contract, rel, client):
     query = (
