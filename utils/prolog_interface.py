@@ -3,14 +3,15 @@ from pyswip import Prolog
 
 prolog = Prolog()
 
-# Dynamically compute absolute path and convert it to Prolog-friendly form
+# Convert path to an absolute, Prolog-safe format
 prolog_file = os.path.join(os.path.dirname(__file__), "..", "prolog", "risk_rules.pl")
-prolog_file = os.path.abspath(prolog_file).replace("\\", "/")  # ensure forward slashes
+prolog_file = os.path.abspath(prolog_file).replace("\\", "/")  # forward slashes
 
-prolog.consult(prolog_file)
+# Wrap in double quotes for Prolog: consult("C:/path/to/file.pl")
+consult_command = f'consult("{prolog_file}")'
+prolog.consult(consult_command)
 
 def assess_risk(margin, proj, sia, contract, rel, client):
-    # Wrap all atom arguments in single quotes to avoid syntax errors
     query = (
         f"assess_risk({margin}, "
         f"'{proj}', {sia}, '{contract}', '{rel}', '{client}', Risk, Suggestions)"
