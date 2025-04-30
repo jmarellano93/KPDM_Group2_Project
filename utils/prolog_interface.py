@@ -3,11 +3,12 @@ from pyswip import Prolog
 
 prolog = Prolog()
 
-# Get absolute path to the Prolog file and fix slashes
-prolog_file = os.path.join(os.path.dirname(__file__), "..", "prolog", "risk_rules.pl")
-prolog_file = os.path.abspath(prolog_file).replace("\\", "/")  # forward slashes
+# Fix Windows path to forward slashes
+prolog_file = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "prolog", "risk_rules.pl")
+).replace("\\", "/")
 
-# Now directly consult the file path (no extra quoting)
+# Pass the fixed file path directly
 prolog.consult(prolog_file)
 
 def assess_risk(margin, proj, sia, contract, rel, client):
