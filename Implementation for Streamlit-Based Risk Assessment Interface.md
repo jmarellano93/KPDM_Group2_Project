@@ -76,6 +76,7 @@ w_proj  = st.number_input(..., value=0.20)
 (other weights)###
 
 submit = st.form_submit_button("Evaluate Risk")
+
 if submit:
     # Validate weights sum
     total_w = w_margin + w_proj + ... + w_client
