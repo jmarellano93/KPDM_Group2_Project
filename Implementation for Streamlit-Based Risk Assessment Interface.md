@@ -60,24 +60,25 @@ After the user fills in the form and presses **"Evaluate Risk"**, the app perfor
 ###  Input Mapping and Query Preparation
 Once inputs are validated, app.py prepares the data for the Prolog query:
 
-    1.	Categorical Value Mapping – The UI selections (strings) are mapped to Prolog-friendly atoms. The code uses Python dictionaries to translate human-readable options into the identifiers expected by risk_rules.pl:
-        o	pt_map for Project Type:
-            	"Execution Only" → "execution_only"
-            	"Planning Only" → "planning_only"
-            	"Execution & Planning" → "planning_and_execution"
-        o	contract_map for Contract Type:
-            	"Fixed Price" → "fixed_price"
-            	"Hourly" → "hourly"
-        o	rel_map for Client Relationship:
-            	"New" → "new"
-            	"Established" → "established"
-        o	client_map for Client Type:
-            	"Private" → "private"
-            	"Government" → "government"
+1.	Categorical Value Mapping – The UI selections (strings) are mapped to Prolog-friendly atoms. The code uses Python dictionaries to translate human-readable options into the identifiers expected by risk_rules.pl:
+
+    •	pt_map for Project Type:
+        o	"Execution Only" → "execution_only"
+        o	"Planning Only" → "planning_only"
+        o	"Execution & Planning" → "planning_and_execution"
+    •	contract_map for Contract Type:
+        o	"Fixed Price" → "fixed_price"
+        o	"Hourly" → "hourly"
+    •	rel_map for Client Relationship:
+        o	"New" → "new"
+        o	"Established" → "established"
+    •	client_map for Client Type:
+        o	"Private" → "private"
+        o	"Government" → "government"
 
 These mappings ensure the values will match exactly the atoms used in the Prolog rules (for example, the Prolog knowledge base expects execution_only or fixed_price as atoms, not the raw UI strings).
 
-    2.	Function Call to Risk Logic – After mapping, the app calls the function assess_risk(...) from the utils.prolog_interface module. This call passes the user inputs in the following order:
+2.	Function Call to Risk Logic – After mapping, the app calls the function assess_risk(...) from the utils.prolog_interface module. This call passes the user inputs in the following order:
 
 
 ---------------code-block---------------
@@ -106,19 +107,17 @@ This function will execute the Prolog query to determine the risk category and s
 ### Displaying Results to the User
 Once the assess_risk function returns, app.py handles displaying the outcome:
 
-•	Risk Level Output: The risk level string (risk) is checked, and a colored message is shown:
-        
-    o	If risk == "high", st.error("High Risk") is used to display a red alert box indicating high risk.
-    o	If risk == "medium", st.warning("Medium Risk") is used for a yellow warning box.
-    o	If risk == "low", st.success("Low Risk") is used for a green success box.
-    o	(If for some reason an unexpected value like "unknown" were returned, it could be handled as a generic info or error, but in normal operation the outputs are one of the three known categories.)
+    •	Risk Level Output: The risk level string (risk) is checked, and a colored message is shown:
+        o	If risk == "high", st.error("High Risk") is used to display a red alert box indicating high risk.
+        o	If risk == "medium", st.warning("Medium Risk") is used for a yellow warning box.
+        o	If risk == "low", st.success("Low Risk") is used for a green success box.
+        o	(If for some reason an unexpected value like "unknown" were returned, it could be handled as a generic info or error, but in normal operation the outputs are one of the three known categories.)
 
-•	Mitigation Suggestions: If the suggestions list is not empty, the app presents a section with additional guidance:
-
-    o	A subheader st.subheader("Mitigation Suggestions") is shown to label the section.
-    o	Each suggestion string in the list is printed as a bullet point (st.write("-", item) for each item). For example, if suggestions = ["Reassign critical tasks to senior staff.", "Extend project timeline to avoid overtime."], the app will list:
-        	Reassign critical tasks to senior staff.
-        	Extend project timeline to avoid overtime.
+    •	Mitigation Suggestions: If the suggestions list is not empty, the app presents a section with additional guidance:
+        •	A subheader st.subheader("Mitigation Suggestions") is shown to label the section.
+        •	Each suggestion string in the list is printed as a bullet point (st.write("-", item) for each item). For example, if suggestions = ["Reassign critical tasks to senior staff.", "Extend project timeline to avoid overtime."], the app will list:
+            o	Reassign critical tasks to senior staff.
+            o	Extend project timeline to avoid overtime.
 
 If the project risk is Low (typically suggestions would be an empty list in that case), no suggestions are displayed, and the section is skipped entirely.
 
@@ -159,7 +158,7 @@ These values (30, 20, 15, 10, etc.) correlate with the default weight percentage
 ### Risk Score Calculation and Classification
 The overall risk score is calculated by summing all the individual attribute scores. This is done in the main predicate after obtaining each factor’s score:
 
-•	The Prolog predicate assess_risk(M, P, S, C, R, T, Risk, Suggestions) first calls each of the six scoring predicates:
+    •	The Prolog predicate assess_risk(M, P, S, C, R, T, Risk, Suggestions) first calls each of the six scoring predicates:
 
 ---------------code-block---------------
 
@@ -174,15 +173,14 @@ The overall risk score is calculated by summing all the individual attribute sco
 
 Each of these binds a score (SM, SP, SS, SC, SR, ST respectively).
 
-•	It then computes Total is SM + SP + SS + SC + SR + ST. This Total represents the aggregated risk score (0 to 100).
+    •	It then computes Total is SM + SP + SS + SC + SR + ST. This Total represents the aggregated risk score (0 to 100).
 
 After calculating the total score, the knowledge base determines the risk category. There are two ways a project can be classified as High risk: by meeting specific critical conditions, or by having a high total score. The logic is as follows:
 
-•	High-Risk Conditions (Rule Overrides): Certain combinations of inputs trigger a High risk classification regardless of the total score. These are encoded as high_risk_condition(...) rules. If any such condition is true, the project is immediately categorized as high risk. The conditions implemented are:
-
-    o	Projects with a very low margin in a Fixed Price contract: M < 10 and Contract = fixed_price ⇒ High Risk (because low profitability buffer on a fixed budget is dangerous).
-    o	Projects that are **Execution Only** with high complexity and a new client: ProjectType = execution_only and SIA Level >= 4 and Client Relationship = new ⇒ High Risk (because a complex execution with an unknown client is very risky).
-    o	Projects with a new private client and insufficient margin: Client Relationship = new and Client Type = private and M < 15 ⇒ High Risk (private new clients with low margin could indicate pricing risks or payment uncertainty).
+    •	High-Risk Conditions (Rule Overrides): Certain combinations of inputs trigger a High risk classification regardless of the total score. These are encoded as high_risk_condition(...) rules. If any such condition is true, the project is immediately categorized as high risk. The conditions implemented are:
+        o	Projects with a very low margin in a Fixed Price contract: M < 10 and Contract = fixed_price ⇒ High Risk (because low profitability buffer on a fixed budget is dangerous).
+        o	Projects that are **Execution Only** with high complexity and a new client: ProjectType = execution_only and SIA Level >= 4 and Client Relationship = new ⇒ High Risk (because a complex execution with an unknown client is very risky).
+        o	Projects with a new private client and insufficient margin: Client Relationship = new and Client Type = private and M < 15 ⇒ High Risk (private new clients with low margin could indicate pricing risks or payment uncertainty).
 
 These rules are checked in the assess_risk predicate using an if-then construct. In Prolog, it appears as:
 
@@ -252,7 +250,8 @@ Using prolog.query to consult the file is a workaround for a known PySWIP issue 
 ### The assess_risk Python Function
 The prolog_interface.py module defines a function def assess_risk(margin, proj, sia, contract, rel, client): which the Streamlit app calls to perform the risk analysis. This function orchestrates the query to Prolog and handles the results:
 
-1.	Query String Construction: The function builds a Prolog query string using the input parameters. Given the inputs (margin, proj, sia, contract, rel, client) which are expected to be Python primitives or strings:
+1.	**Query String Construction**: The function builds a Prolog query string using the input parameters. Given the inputs (margin, proj, sia, contract, rel, client) which are expected to be Python primitives or strings:
+
     o	margin (float or int) and sia (int) are numeric, so they are inserted directly.
     o	proj, contract, rel, client are strings corresponding to Prolog atoms (e.g., "execution_only", "fixed_price"). These need to be quoted in the query so that Prolog interprets them as atoms (not variables). The code does this by wrapping each in single quotes within the f-string.
     o	The query is formatted as:
@@ -276,11 +275,12 @@ results == [ {"Risk": "high", "Suggestions": ["Reassign critical tasks to senior
 If the input values were somehow outside the expected domain (for example, an unknown project type string), the query could return no results (an empty list).
 
 3.	**Handling Query Results**: The code checks if results is empty:
-       o	If no result was returned, the function returns ("unknown", []). This is a safety fallback indicating that the risk could not be assessed (perhaps due to an input issue). In normal operation with correct inputs, this path shouldn't occur because the UI restricts inputs to known values.
-       o	If a result is present, the code takes the first (and only) solution dictionary: result = results[0]. It then extracts Risk = result["Risk"] and Suggestions = result["Suggestions"]. These correspond to the Prolog output:
-           	Risk will be a Prolog atom 'low', 'medium', or 'high' which PySWIP converts into a Python string.
-           	Suggestions will be a Prolog list of text (strings). PySWIP converts this into a Python list. If the list was empty in Prolog, it becomes an empty Python list []. If it contained strings, those appear as Python strings in the list.
-       o	The function returns a tuple (Risk, Suggestions) back to the caller (app.py). For example, it might return ("high", ["Reassign critical tasks to senior staff.", "Extend project timeline to avoid overtime.", "Simplify scope to reduce risk."]).
+
+    •	If no result was returned, the function returns ("unknown", []). This is a safety fallback indicating that the risk could not be assessed (perhaps due to an input issue). In normal operation with correct inputs, this path shouldn't occur because the UI restricts inputs to known values.
+    •	If a result is present, the code takes the first (and only) solution dictionary: result = results[0]. It then extracts Risk = result["Risk"] and Suggestions = result["Suggestions"]. These correspond to the Prolog output:
+           o	Risk will be a Prolog atom 'low', 'medium', or 'high' which PySWIP converts into a Python string.
+           o	Suggestions will be a Prolog list of text (strings). PySWIP converts this into a Python list. If the list was empty in Prolog, it becomes an empty Python list []. If it contained strings, those appear as Python strings in the list.
+    •	The function returns a tuple (Risk, Suggestions) back to the caller (app.py). For example, it might return ("high", ["Reassign critical tasks to senior staff.", "Extend project timeline to avoid overtime.", "Simplify scope to reduce risk."]).
 
 This Python function abstracts away the Prolog interaction, so the Streamlit app doesn’t need to deal with query syntax or Prolog internals. It simply supplies Python values and gets Python-friendly results.
 Because the Prolog engine was loaded at module import time, subsequent calls to assess_risk are fast – they re-use the already consulted knowledge base. This design ensures that the Prolog consulting (which can be relatively slow if done repeatedly) happens only once.
