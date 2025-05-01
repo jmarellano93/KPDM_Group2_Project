@@ -1,560 +1,310 @@
-# Implementation Plan for Streamlit-Based Project Risk Assessment Interface
+# Project Risk Assessment Tool – Implementation
+
+## Introduction
+This document outlines the implementation of a Streamlit-based Project Risk Assessment Tool. The tool assesses project risk (Low, Medium, High) and provides mitigation suggestions using a knowledge-based approach. The solution is implemented with a Streamlit front-end and a SWI-Prolog knowledge base for risk logic, connected via the PySWIP Python-Prolog interface. All risk computations are performed by Prolog rules; there is no fallback Python logic for scoring. The following sections describe the code structure, data flow, and integration details, reflecting the actual code (module names, functions, and variables) in the project.
 
-## Part I: User Interface and UX Structure
+## Project Structure and Components
+The codebase is organized into the following files and modules:
 
-The Streamlit app will be organized as a single-page form that collects all required inputs and displays the results clearly. The UI will include a title and instructions, an input form with fields for the six attributes, an optional section for weight overrides, and an output area for the risk assessment results. Key elements of the UI design are:
+    •	app.py– Streamlit application script providing the user interface. It collects user inputs (project parameters and optional weight adjustments), calls the risk assessment logic, and displays results.
+    •	utils/prolog_interface.py– Python module that initializes a PySWIP Prolog engine, loads the Prolog knowledge base, and defines a helper function assess_risk(...) to query the Prolog engine with given inputs.
+    •	prolog/risk_rules.pl– SWI-Prolog knowledge base containing the risk scoring rules, risk classification thresholds, and mitigation advice. This file defines the predicate assess_risk/7 that encapsulates the risk evaluation logic.
+    •	utils/__init__.py– An initializer (may be empty) to make the utils directory a Python package. No significant logic is defined here.
+    •	requirements.txt– Lists project dependencies, for example: streamlit for the UI and pyswip for Prolog integration (along with the need for SWI-Prolog installation). Ensuring these are installed is necessary to run the application.
+
+Below, we delve into each component and describe how they work together to implement the risk assessment functionality.
 
-•	Title and Description: At the top of the app, we will use st.title() and st.write() (or st.markdown()) to introduce the tool (e.g., "Project Risk Assessment Tool") and provide brief instructions. This can explain that the user should enter project parameters and that the tool will classify the project risk as Low, Medium, or High. We will mention that default weighting is applied to factors, with an option to adjust these weights if needed.
+## Streamlit Frontend Application (app.py)
+The ### app.py ### module is the entry point that defines the web interface using Streamlit. It is responsible for gathering user input, handling form interactions (including dynamic weight overrides), and presenting the risk assessment results. Key aspects of the front-end implementation include:
 
-•	Input Form for Project Attributes: The six input fields will be laid out in a logical order. We will group related fields and use appropriate input widgets for each:
-    
-    •	Expected Margin (%): A numeric input (using st.number_input) for the expected profit margin percentage. This will accept a float or integer value (e.g. 12.5 for 12.5% margin). We will set a reasonable range (0 to 100) and perhaps a step (0.1) for precision. A help tooltip will clarify this is the predicted profitability percentage. By default, no specific value is pre-filled (or we may use a neutral default like 0.0 to indicate it needs input).
-    •   Project Type: A dropdown or radio selection (st.selectbox or st.radio) listing the allowed types: "Execution Only", "Planning Only", "Execution & Planning". These correspond to whether the project includes only the execution phase, only planning phase, or both phases. We’ll provide these as user-friendly strings. A help text can note that execution-only projects tend to carry higher risk. The default selection can be the combined "Execution & Planning" (as a common scenario).
-    •	SIA Complexity Level: An integer slider (st.slider) or selectbox for values 1 through 5. This represents the complexity rating per Swiss SIA standards (1 = least complex, 5 = most complex). We will label it clearly (e.g., "SIA Complexity (Level 1–5)") and possibly include help text (e.g., "Level 5 is highest complexity with more effort/uncertainty).
-    •	Contract Type: A radio button with two options: "Fixed Price" and "Hourly". Default can be "Fixed Price" (since it’s listed first). A help note can mention that fixed-price contracts add rigidity and can be riskier if unforeseen issues arise.
-    •	Historical Client Relationship: A radio button for "New" vs "Established" client. Default to "New" (or whichever is more common). Help text might explain that an established client (ongoing relationship) is generally less risky than a new client.
-    •	Client Type: A radio for "Private" vs "Government". Default to "Private". Help text can note differences (e.g., government projects involve more regulation but usually stable funding).
+### Form Inputs for Project Parameters
+Using a Streamlit form (st.form("risk_form")), the app collects all necessary project attributes from the user. The form fields correspond to the factors considered in risk evaluation:
+
+    •	Expected Margin (%) – Numeric input (st.number_input) for the project's expected profit margin as a percentage. (Default value: 0.0; range 0.0–100.0; step 0.1).
+    •	Project Type – Categorical selection (st.selectbox) with options:
+        o	"Execution Only"
+        o	"Planning Only"
+        o	"Execution & Planning"
+    •	SIA Complexity Level – An integer slider (st.slider) for project complexity on a scale of 1 to 5 (according to Swiss SIA levels). (Default value: 3).
+    •	Contract Type – Categorical option (st.radio) with choices:
+        o	"Fixed Price"
+        o	"Hourly"
+    •	**Historical Client Relationship** – Categorical option (st.radio) indicating the prior relationship with the client:
+    o	"New" (first-time client)
+    o	"Established" (repeat client)
+    •	Client Type – Categorical option (st.radio) for client sector:
+        o	"Private"
+        o	"Government"
 
-All these inputs will be placed inside a form using st.form for better control. For example, we can do with st.form("risk_form"): and create the above fields, ending with a submission button. This ensures the app waits for the user to fill all fields and press "Submit" instead of reacting immediately to each input.
+Each of these inputs maps to a parameter used in the risk assessment logic. The form is encapsulated with a submit button labeled **"Evaluate Risk"**. Users enter all fields and then click this button to run the analysis.
 
-•	Advanced Weight Override Section: Below the main inputs, we will provide an expandable section (using st.expander("Adjust Attribute Weights")) that allows the user to override the default weights for the six attributes. By default, the weights are Expected Margin 0.30, Project Type 0.20, SIA Level 0.15, Contract Type 0.15, Client Relationship 0.10, Client Type 0.10, which sum to 1.0. Inside the expander, we will list each attribute with a numeric input for its weight:
+### Dynamic Weight Adjustment Controls
+Within the form, the app provides an expandable section (st.expander("Adjust Attribute Weights")) that allows the user to override the default importance weights of each attribute. This is useful for what-if analysis or to tune the model. Six numeric inputs (st.number_input) are presented, one for each attribute:
+
+    •	Weight: Margin – default **0.30** (30% weight)
+    •	Weight: Project Type – default **0.20** (20%)
+    •	Weight: SIA Level – default **0.15** (15%)
+    •	Weight: Contract Type – default **0.15** (15%)
+    •	Weight: Client Relationship – default **0.10** (10%)
+    •	Weight: Client Type – default **0.10** (10%)
+
+These default values sum to 1.00 (100%), reflecting the initial weight distribution used in the Prolog rules. The user can adjust these sliders/numbers to redistribute the weights as long as the total remains 1.0.
+After the user fills in the form and presses **"Evaluate Risk"**, the app performs a validation on the weights:
+
+    •	It calculates total_weight = w_margin + w_proj + w_sia + w_con + w_rel + w_cli.
+    •	If the sum is not approximately 1.0 (a tolerance of 1e-6 is used for floating-point safety), the app will display an error message using st.error, indicating the weights must sum to 1.0 and showing the current sum. In this case, the risk assessment is **not executed** until the weights are corrected.
+    •	If the weights sum correctly to 1.0, the input is considered valid, and the app proceeds with the risk computation.
+
+**How the weight overrides are used**: The weight inputs do not directly alter the logic in the code – instead, they are meant to ensure consistency with the underlying model. The Prolog knowledge base uses fixed score contributions that correspond to the default weights (as percentages of a total score of 100). By allowing the user to adjust and normalize weights, the tool ensures the user’s perspective on attribute importance is captured. Currently, the implementation **does not dynamically rewrite the Prolog rules** based on these inputs; rather, it assumes the default weight distribution. In effect, the weight sliders serve as a transparency and validation mechanism. (In future iterations, these weights could be passed into Prolog or used to scale the scoring, as discussed later in improvements.)
+
+###  Input Mapping and Query Preparation
+Once inputs are validated, app.py prepares the data for the Prolog query:
+
+    1.	Categorical Value Mapping – The UI selections (strings) are mapped to Prolog-friendly atoms. The code uses Python dictionaries to translate human-readable options into the identifiers expected by risk_rules.pl:
+        o	pt_map for Project Type:
+            	"Execution Only" → "execution_only"
+            	"Planning Only" → "planning_only"
+            	"Execution & Planning" → "planning_and_execution"
+        o	contract_map for Contract Type:
+            	"Fixed Price" → "fixed_price"
+            	"Hourly" → "hourly"
+        o	rel_map for Client Relationship:
+            	"New" → "new"
+            	"Established" → "established"
+        o	client_map for Client Type:
+            	"Private" → "private"
+            	"Government" → "government"
+
+These mappings ensure the values will match exactly the atoms used in the Prolog rules (for example, the Prolog knowledge base expects execution_only or fixed_price as atoms, not the raw UI strings).
+
+    2.	Function Call to Risk Logic – After mapping, the app calls the function assess_risk(...) from the utils.prolog_interface module. This call passes the user inputs in the following order:
 
-    •	Expected Margin Weight (default 0.30)
-    •	Project Type Weight (default 0.20)
-    •	Complexity Level Weight (default 0.15)
-    •	Contract Type Weight (default 0.15)
-    •	Client Relationship Weight (default 0.10)
-    •	Client Type Weight (default 0.10)
+
+---------------code-block---------------
 
-We will ensure these are labeled clearly (e.g., "Weight for Expected Margin") and perhaps display a note that weights must sum to 1. The expander will be closed by default (so novice users can ignore it and use defaults easily), but power users can open it to tweak the weight distribution if their scenario demands different emphasis. We might also include a "Reset to Defaults" button inside the expander to quickly revert to the 0.30/0.20/... defaults, for convenience.
-
-•	Submit Button: Inside the form, at the bottom, we’ll place a st.form_submit_button("Evaluate Risk"). When clicked, it will trigger the risk evaluation process. The form ensures that all inputs are captured at once. We will only process the inputs and query Prolog when this button is pressed, not on every field change.
+    risk, suggestions = assess_risk(
+        margin_value,
+        pt_map[proj_type],
+        sia_level_value,
+        contract_map[contract],
+        rel_map[rel],
+        client_map[client]
+    )
 
-•	Results Display: After submission, the app will display the results on the same page below the form. The output will include:
-    
-    •	Risk Classification: This will be shown prominently (e.g., as a header or using Streamlit’s status elements). For example, if the result is High risk, we might use st.error("High Risk") to show it in a red highlight; for Medium risk maybe st.warning("Medium Risk") (yellow), and for Low risk st.success("Low Risk") (green). This gives a quick visual cue. Alternatively, we can simply use a bold text like st.markdown("**Risk Level:** High") with some coloring via Markdown/HTML. The exact phrasing can be "Low Risk", "Medium Risk", or "High Risk" as obtained from the Prolog logic.
-    •	Mitigation Suggestions: If the Prolog returns mitigation strategies (especially for high-risk projects), we will list them below the risk level. We can precede them with a subheader like st.subheader("Recommended Mitigations") and then use a bullet list. For example, we might display something like:
-        •	Reassign critical tasks to senior staff
-        •	Extend project timeline to avoid overtime
-        •	Simplify project scope to reduce complexity (These are examples drawn from the knowledge base; if risk is High, multiple suggestions may be listed. For Medium risk, perhaps a couple of moderate precautions; for Low risk, we might simply state "No significant mitigation needed" or not show this section at all.)
-    •	The interface will ensure the results are distinct from the input form, perhaps separated by a horizontal line or spacing for clarity. Each time the user submits, the result area will update accordingly.
+---------------code-block-end---------------
 
-This UI/UX structure focuses on clarity and ease of use: short explanatory text, logically grouped inputs (with helpful descriptions), and an obvious action button leading to a clearly highlighted result. The use of an expander for advanced options keeps the interface clean for most users while still allowing customization of weights.
+For example, if the user entered Margin 8.0, Project Type "Execution Only", SIA 5, Contract "Fixed Price", Relationship "New", Client "Private", the call becomes:
 
-## Part II: Input Handling, Validation, and Formatting
+---------------code-block---------------
 
-Robust input validation will be implemented to ensure the data passed to the Prolog engine is correctly formatted and within expected ranges:
+    risk, suggestions = assess_risk(8.0, "execution_only", 5, "fixed_price", "new", "private")
 
-    •	Expected Margin (%): We will validate that this input is a numeric value (Streamlit’s number_input inherently ensures this by providing a float). The range will be restricted to 0–100% (since margin is a percentage of revenue). If the user somehow inputs a value outside this range (or a negative margin indicating an expected loss), we will handle it gracefully. For example, if a negative margin is entered, we might treat it as <10% category (since any margin below 10% is the highest risk bracket). However, typically we will inform the user if they enter an unrealistic value. We can set min_value=0.0 in st.number_input to disallow negative values, and max_value=100.0 to disallow >100%. If the user leaves it at 0.0 (default), we might interpret that as 0% margin (which is indeed in the lowest bracket <10%). We will ensure the value is read as a float (e.g., 15 -> 15.0) because the Prolog rules expect a numerical comparison on it.
-    •	Enumerated Fields: For Project Type, SIA Level, Contract Type, Client Relationship, and Client Type, the Streamlit widgets will only allow valid options, so we don’t have to worry about invalid values. We will, however, map the human-readable selections to the corresponding Prolog atom or value:
-    •	Project Type: "Execution Only", "Planning Only", "Execution & Planning" will be mapped to Prolog atoms execution_only, planning_only, and planning_and_execution respectively (all lowercase and underscores, which are valid Prolog atom names). This mapping handles spaces and ampersands by converting to underscore notation.
-    •	SIA Complexity Level: The slider yields an integer 1–5. We will pass this as an integer to Prolog (since Prolog can treat it as a number for comparisons). We might also allow Prolog to treat it as an atom like level_1 etc., but using an integer is simpler for range comparisons (e.g., >= 4 in a rule).
-    •	Contract Type: "Fixed Price" -> fixed_price, "Hourly" -> hourly.
-    •	Historical Client Relationship: "New" -> new, "Established" -> established (the documentation referred to established clients as "constant", but we'll use the term established for clarity).
-    •	Client Type: "Private" -> private, "Government" -> government.
+---------------code-block-end---------------
 
-These mappings will be done in Python after the user submits the form. For example, we might have a dictionary like proj_type_map = {"Execution Only": "execution_only", "Planning Only": "planning_only", "Execution & Planning": "planning_and_execution"} to convert the selected string into the Prolog atom name. This ensures the query we build is properly formatted (Prolog atoms must be lowercase and start with a letter).
+This function will execute the Prolog query to determine the risk category and suggestions (explained in the next section). The application expects risk to be a string ("low", "medium", or "high") and suggestions to be a list of suggestion strings.
 
-•	Weight Overrides: Each weight input will be constrained between 0.0 and 1.0 (using min_value=0.0, max_value=1.0 in st.number_input). We will validate the weights collectively upon submission:
-•	We calculate the sum of the six weight inputs. If the sum is not exactly 1.0, we will not proceed to Prolog query immediately. Instead, we handle this in one of two ways:
-1.	Display an Error: The app can show a st.error("Weights must sum to 1.0. Please adjust the values.") and stop the process. The user can then fix the weights and resubmit. We may calculate the current sum and inform the user of the discrepancy (e.g., "Current sum is 0.95" or "1.07, adjust to 1.0").
-2.	Auto-Normalize: Alternatively, we could automatically normalize the weights by dividing each by the total sum. However, this might be non-intuitive for the user. It's clearer to enforce manual correction so the user is aware of the final weights. Our plan is to require the manual fix (with an error message), as it’s straightforward and keeps the user in control.
+### Displaying Results to the User
+Once the assess_risk function returns, app.py handles displaying the outcome:
 
-    •	If the sum is extremely close to 1.0 (floating-point rounding issues, e.g., 0.999), we can consider it valid by using a tolerance (like within 0.001). But ideally, the user will input simple decimals that sum exactly (the defaults do).
-    •	If the user never opened the weight expander, the values will remain at defaults summing to 1.0, so this check will pass. If they did adjust, this validation ensures logical consistency of their inputs.
-    •	Form Submission Flow: When the user hits "Evaluate Risk", our code (under if form_submitted: block) will run the validation and then proceed. Pseudocode for handling inputs might look like:
+•	Risk Level Output: The risk level string (risk) is checked, and a colored message is shown:
+        
+    o	If risk == "high", st.error("High Risk") is used to display a red alert box indicating high risk.
+    o	If risk == "medium", st.warning("Medium Risk") is used for a yellow warning box.
+    o	If risk == "low", st.success("Low Risk") is used for a green success box.
+    o	(If for some reason an unexpected value like "unknown" were returned, it could be handled as a generic info or error, but in normal operation the outputs are one of the three known categories.)
 
----------------------------------------------------
-margin = st.number_input(..., value=0.0)
-proj_type_str = st.selectbox(..., options=list(proj_type_map.keys()))
+•	Mitigation Suggestions: If the suggestions list is not empty, the app presents a section with additional guidance:
 
-(similarly for other fields)###
+    o	A subheader st.subheader("Mitigation Suggestions") is shown to label the section.
+    o	Each suggestion string in the list is printed as a bullet point (st.write("-", item) for each item). For example, if suggestions = ["Reassign critical tasks to senior staff.", "Extend project timeline to avoid overtime."], the app will list:
+        	Reassign critical tasks to senior staff.
+        	Extend project timeline to avoid overtime.
 
-w_margin = st.number_input(..., value=0.30)
-w_proj  = st.number_input(..., value=0.20)
+If the project risk is Low (typically suggestions would be an empty list in that case), no suggestions are displayed, and the section is skipped entirely.
 
-(other weights)###
+The Streamlit app thus provides an interactive form, immediate validation of weight consistency, calls the Prolog-based logic, and cleanly displays the classified risk level along with any recommended mitigations.
 
-submit = st.form_submit_button("Evaluate Risk")
+## SWI-Prolog Knowledge Base (risk_rules.pl)
+The core risk assessment logic resides in the Prolog knowledge base file risk_rules.pl. This file encodes domain knowledge as rules and facts, determining how input parameters translate to a risk score, how that score is classified, and what suggestions to provide. Below is an overview of the structure and logic defined in this Prolog module:
 
-if submit:
-    # Validate weights sum
-    total_w = w_margin + w_proj + ... + w_client
-    if abs(total_w - 1.0) > 1e-6:
-        st.error(f"Attribute weights must sum to 1.0 (current sum = {total_w:.2f}). Please adjust.")
-    else:
-        # proceed to build Prolog query
-        # ...
----------------------------------------------------
+### Attribute Scoring Rules
+Each risk factor (attribute) has an associated scoring rule that contributes a certain number of points to an overall risk score. These points reflect the relative weight (importance) of that factor in the risk assessment. All scores are scaled such that the maximum total score is 100 (when all risk-contributing factors are at their most extreme). The rules are defined as Prolog predicates that map an input value to a score:
 
-This ensures no Prolog call is made until inputs are sane. If validation fails, we simply don’t execute the risk evaluation and instead prompt the user.
+    •	Margin Score (margin_score(M, Score)): Determines points based on the expected profit margin M:
+        o	If M < 10 (very low margin), assign 30 points (highest risk contribution for margin).
+        o	If 10 <= M <= 15, assign 15 points (moderate risk).
+        o	If M > 15, assign 0 points (margin is healthy, so no risk points from this factor).
+    •	Project Type Score (project_score(Type, Score)): Points based on project scope:
+        o	execution_only projects → 20 points (higher risk due to single-phase focus),
+        o	planning_and_execution → 10 points (medium risk, balanced),
+        o	planning_only → 0 points (lower risk scenario).
+    •	SIA Complexity Score (complexity_score(Level, Score)): Points by SIA complexity level:
+        o	Level 5 (highest complexity) → 15 points,
+        o	Level 4 → 12 points,
+        o	Level 3 → 9 points,
+        o	Level 2 → 6 points,
+        o	Level 1 (lowest complexity) → 0 points.
+    •	Contract Type Score (contract_score(Type, Score)):
+        o	fixed_price contracts → 15 points (higher risk, since the provider bears cost overruns),
+        o	hourly contracts → 0 points (lower risk, as effort is paid as it goes).
+    •	Client Relationship Score (clientrel_score(Rel, Score)):
+        o	new client → 10 points (riskier due to unknown client reliability),
+        o	established client → 0 points (trusted relationship, no added risk points).
+    •	Client Type Score (clienttype_score(Type, Score)):
+        o	private client → 10 points (can be riskier in payment or scope changes),
+        o	government client → 0 points (public sector clients are assumed more stable in this context).
 
-•	Formatting the Prolog Query Inputs: After validation, we translate the inputs for the Prolog query:
+These values (30, 20, 15, 10, etc.) correlate with the default weight percentages defined in the UI. For instance, Margin can contribute up to 30 points out of 100 (which aligns with a 0.30 weight), Project Type up to 20 points (0.20 weight), and so on. By using a point system, the logic is implemented entirely in Prolog without needing to explicitly multiply by weights – the thresholds inherently carry the weight information.
 
-    •	The numeric inputs (margin and complexity level) will be formatted as numbers (e.g., 15.0 or 12.5 for margin, 3 for complexity). We will ensure the margin is represented as a fraction (e.g., 12.5 stays 12.5, not 0.125) because the Prolog rules in our knowledge base expect percentage values directly (e.g., compare margin to 10, 15, etc., which represent 10% and 15%).
-    •	The categorical inputs will be formatted as lowercase atoms (as mapped above). For example, if the user chose "Execution & Planning", after mapping we get planning_and_execution. In the Prolog query string, this will appear without quotes (since it's a symbolic atom, not a string).
-    •	We will construct a Prolog query predicate call like:
-        assess_risk(Margin, ProjectType, Complexity, ContractType, ClientRel, ClientType, RiskLevel, Mitigations)
-        Filling in the user values, an example query might look like:
-        assess_risk(12.5, planning_and_execution, 3, hourly, established, government, RiskLevel, Suggestions).
-        Here RiskLevel and Suggestions are variables that Prolog will unify with the results.
-    •	It’s important that we match the exact predicate name and arity defined in the Prolog program (we will define assess_risk/8 or similar in the Prolog code as described later).
-
-By rigorously validating and formatting inputs, we ensure that the data passed to Prolog is clean and that the Prolog engine will receive input in the exact form it expects. This reduces the chance of runtime errors (like unknown atoms or type mismatches) and ensures the logic is applied correctly. Any invalid input scenario will be caught and handled with a clear message to the user, maintaining a smooth UX.
-
-## Part III: Prolog Knowledge Base: Encoding Scoring and Rules
-We will create a Prolog knowledge base (e.g., a file risk_rules.pl) that encodes the core scoring tables and decision logic from the provided documentation. The Prolog program will contain facts and rules to calculate the total risk score from attributes and then classify the risk level, possibly also generating mitigation suggestions. The implementation approach is as follows:
-
-•	Representing Attribute Scores (Weighted Rules): For each attribute, we will encode the scoring table (Table 4–9 from the document) as Prolog facts or rules. Each attribute’s contribution will be determined by the user input value for that attribute:
-    
-    •	Expected Margin (%): According to Table 4, if margin is < 10%, that yields a risk score of 30 (the highest risk contribution for margin); if 10–15%, score 15; if > 15%, score 0. We will implement this as a set of rules:
-
----------------------------------------------------
-margin_score(Margin, Score) :-
-    Margin < 10, Score is 30.
-margin_score(Margin, Score) :-
-    Margin >= 10, Margin =< 15, Score is 15.
-margin_score(Margin, Score) :-
-    Margin > 15, Score is 0.
----------------------------------------------------
-
-This uses Prolog's arithmetic and comparison to assign the appropriate score. (We assume Margin will be provided as a numeric value, so these comparisons are valid.)
-    
-    •	Project Type: Table 5 defines: Execution-only = 20, Planning & Execution = 10, Planning-only = 0. We can implement this as simple facts since it's a direct mapping from an enum to a score:
-
----------------------------------------------------
-project_score(execution_only, 20).
-project_score(planning_and_execution, 10).
-project_score(planning_only, 0).
----------------------------------------------------
-
-    •	SIA Complexity Level: Table 6: Level 5 = 15, Level 4 = 12, Level 3 = 9, Level 2 = 6, Level 1 = 0. We can either enumerate this as facts:
-
----------------------------------------------------
-complexity_score(5, 15).
-complexity_score(4, 12).
-complexity_score(3, 9).
-complexity_score(2, 6).
-complexity_score(1, 0).
----------------------------------------------------
-
-or as a formula (since the pattern is linear). But facts are straightforward.
-
-    •	Contract Type: Table 7: Fixed-price = 15, Hourly = 0. As facts:
-
----------------------------------------------------
-contract_score(fixed_price, 15).
-contract_score(hourly, 0).
----------------------------------------------------
-
-    •	Historical Client Relationship: Table 8: New = 10, Established = 0. As facts:
-
----------------------------------------------------
-clientrel_score(new, 10).
-clientrel_score(established, 0).
----------------------------------------------------
-
-(The doc used the term "Constant" for established, but we will use established for clarity and ensure consistency with the input mapping.)
-
-    •	Client Type: Table 9: Private = 10, Government = 0. As facts:
-
----------------------------------------------------
-clienttype_score(private, 10).
-clienttype_score(government, 0).
----------------------------------------------------
-
-These scores as defined (30, 20, 15, 10, etc.) already have the attribute weight factored in. They were derived from an assumption of weights (e.g., margin’s weight 0.30 corresponds to 30 points maximum). In our Prolog code, these values correspond to the default weight settings.
-
-
-•	Incorporating Weight Overrides: If we want the Prolog logic to honor custom weights (when the user overrides them), we have a couple of design options:
-
-    1.	Adjust the score facts on the fly: We could recalculate the numeric scores passed to Prolog based on the new weights in the Python layer and then call Prolog with those adjusted scores. However, since our Prolog rules are set up to calculate scores internally, a better approach is to pass the weights into Prolog and use them in the calculation.
-    2.	Compute scores using weight fractions in Prolog: We can modify the Prolog rules to use the weight values as multipliers. For example, instead of hardcoding 30 for margin <10%, we use a formula: Score is WeightMargin * 100 * 1.0 for the worst category. One approach is to define unweighted risk factors (0 to 1 scale) for each condition and then multiply by weight:
-
----------------------------------------------------
-margin_factor(Margin, Factor) :-
-    Margin < 10, Factor is 1.0.
-margin_factor(Margin, Factor) :-
-    Margin >= 10, Margin =< 15, Factor is 0.5.
-margin_factor(Margin, Factor) :-
-    Margin > 15, Factor is 0.0.
----------------------------------------------------
-
-Then the score could be computed as Score is Factor * Wmargin * 100. Similarly:
-
----------------------------------------------------
-project_factor(execution_only, 1.0).
-project_factor(planning_and_execution, 0.5).
-project_factor(planning_only, 0.0).
----------------------------------------------------
-
-and Score is Factor * Wproject * 100. The complexity factors would be 1.0 for level 5, 0.8 for level 4, 0.6 for level 3, etc., reflecting the proportion of the maximum weight.
- 
-Using this method, we could define our main predicate to accept weight parameters and use them in computing each Score. For instance:
-
----------------------------------------------------
-total_score(Margin, ProjType, SiaLevel, Contract, Rel, Client,
-            Wm, Wp, Ws, Wc, Wr, Wt, Total) :-
-    margin_factor(Margin, Fm), Sm is Fm * Wm * 100,
-    project_factor(ProjType, Fp), Sp is Fp * Wp * 100,
-    complexity_factor(SiaLevel, Fs), Sc is Fs * Ws * 100,
-    contract_factor(Contract, Fc), So is Fc * Wc * 100,
-    clientrel_factor(Rel, Fr), Sr is Fr * Wr * 100,
-    clienttype_factor(Client, Ft), St is Ft * Wt * 100,
-    Total is Sm + Sp + Sc + So + Sr + St.
----------------------------------------------------
-
-(Here I used Wc for Contract weight, Wr for Relationship weight, Wt for client Type weight, etc., to differentiate). This total_score predicate calculates the weighted sum dynamically. We would call it with the user-provided weights.
- 
-However, to keep things simpler in the first iteration, we might choose to assume default weights within Prolog and handle weight adjustments outside or via a simpler mechanism. A pragmatic approach is:
-    
-    •	Implement the Prolog knowledge base with the default weighting (as in the fixed scores above).
-    •	If the user overrides weights, we can scale the final total score in Python or adjust threshold logic accordingly. But adjusting in Python could get complicated and undermine using Prolog for the logic.
-
-Ideally, we implement the full dynamic approach as shown with factors. For this plan, we will aim to pass the weights to Prolog. That means our query will become assess_risk(Margin, ProjType, Sia, Contract, Rel, Client, Wm, Wp, Ws, Wc, Wr, Wt, Risk, Suggestions) including the six weight values as parameters. This is a bit lengthy but ensures the Prolog rules use the exact weights.
-
-•	Calculating the Total Score: Once individual attribute scores are determined, Prolog will sum them up to get a Total Risk Score. This corresponds to the “Variable1coefficient1 + var2coef2 + ...” calculation described in the document. In our static-weight approach, this is just adding the six scores (since each already reflects its weight). For example:
-
----------------------------------------------------
-total_score(Margin, ProjType, SiaLevel, Contract, Rel, Client, TotalScore) :-
-    margin_score(Margin, S1),
-    project_score(ProjType, S2),
-    complexity_score(SiaLevel, S3),
-    contract_score(Contract, S4),
-    clientrel_score(Rel, S5),
-    clienttype_score(Client, S6),
-    TotalScore is S1 + S2 + S3 + S4 + S5 + S6.
----------------------------------------------------
-
-This rule uses the previously defined facts/rules to retrieve each partial score and then sums them. With default weights, TotalScore will range from 0 to 100 (since in the worst-case scenario each category contributes its max, totaling 100). If using dynamic weights via factor method, the sum would similarly be scaled to 100 * (sum of weights), which is also 100 if weights sum to 1. So either way, 0–100 scale is maintained.
-
-•	Risk Classification Logic: After computing the total score, the Prolog program will classify the project as Low, Medium, or High risk. We have two sets of criteria from the experts:
-    
-    1. Threshold-based classification: The documentation suggests using the total score with cut-off values:
-        •	Low Risk if Total Score < 40
-        •	Medium Risk if 40 ≤ Total Score ≤ 70
-        •	High Risk if Total Score > 70 
-        We will implement this directly in Prolog. For example:
-
----------------------------------------------------
-risk_classification(TotalScore, low) :- TotalScore < 40.
-risk_classification(TotalScore, medium) :- TotalScore >= 40, TotalScore =< 70.
-risk_classification(TotalScore, high) :- TotalScore > 70.
----------------------------------------------------
-
-These rules cover all possible scores 0–100 and assign a risk category accordingly. (We ensure the boundaries 40 and 70 are handled in the Medium clause.)
-
-    2.	Rule-based classification (logical conditions): The document also provides specific logical rules (in natural language) for identifying High, Medium, and Low risk beyond just numeric thresholds. For instance, a project is considered High Risk if any of the following hold:
-        •	Expected Margin < 10% AND (Contract Type is fixed-price OR SIA Complexity ≥ 4).
-        •	Project Type = Execution-only AND (SIA Complexity ≥ 4 OR Client Relationship = New).
-        •	Client Type = Private AND Client Relationship = New AND Expected Margin < 15%.
-
-These are explicit conditions that trigger a High risk classification. Similarly, Medium Risk was described with a combination of margin in 10–15% and either non-execution project with complexity 3 or a fixed-price contract, and Low Risk described by margin >15% and either government client or established client with no execution-only.
- 
-We can encode these as Prolog rules as well:
-
----------------------------------------------------
-high_risk_condition(Margin, ProjType, Sia, Contract, Rel, Client) :-
-    Margin < 10,
-    (Contract = fixed_price; Sia >= 4).
-high_risk_condition(Margin, ProjType, Sia, Contract, Rel, Client) :-
-    ProjType = execution_only,
-    (Sia >= 4; Rel = new).
-high_risk_condition(Margin, ProjType, Sia, Contract, Rel, Client) :-
-    Client = private,
-    Rel = new,
-    Margin < 15.
----------------------------------------------------
-
-(And similarly one could write medium_risk_condition(...) and low_risk_condition(...) rules for the other criteria.)
-The Prolog classification can then use these as overrides or checks. One strategy is to prioritize the logical rules for High risk: if any high_risk_condition is true, we classify as high regardless of the numeric score. For example:
-
----------------------------------------------------
-determine_risk(Margin, ProjType, Sia, Contract, Rel, Client, Score, high) :-
-    high_risk_condition(Margin, ProjType, Sia, Contract, Rel, Client).
-determine_risk(_, _, _, _, _, _, Score, medium) :-
-    Score >= 40, Score =< 70.
-determine_risk(_, _, _, _, _, _, Score, low) :-
-    Score < 40.
----------------------------------------------------
-
-Here, the first rule will succeed if any high-risk pattern is met (we don't even care what the numeric Score is in that case). If that fails, we fall through to checking the numeric range for medium or low. We might also encode the Medium and Low logical conditions similarly and cross-verify. However, since the threshold method already covers typical medium/low, we can keep it simple: apply explicit High risk triggers, otherwise use the score thresholds for Medium vs Low. This ensures we don't miss scenarios where the numeric score might underestimate risk.
- 
-It’s worth noting that if the user heavily changes weights, the numeric thresholds might shift in meaning (but since we always normalize weights to sum 1, the 0–100 scale remains, so thresholds 40/70 still apply). The explicit conditions are independent of weights (they look at the raw inputs), which is fine as they represent domain expert rules.
- 
-In summary, the Prolog assess_risk logic will likely do:
-
-    1. Calculate TotalScore using attribute scores.
-    2. Check for high_risk_condition(s). If true, classify as high.
-    3. Else, if TotalScore > 70 then high, else if >=40 then medium, else low (this double covers high, but our high_risk_condition might catch some cases even if score <= 70).
-    4. (Optionally, check medium and low conditions explicitly, but those mostly align with numeric criteria we set.)
-
-We will test to ensure no contradictions arise (in case a scenario meets a high-risk rule but has a low numeric score – our logic as written would classify high due to the condition rule, which is what we want).
-
-•	Mitigation Suggestions Generation: The Prolog knowledge base can also hold suggestions corresponding to each risk level. The document suggests tailored strategies for high-risk projects. We will implement a simple mapping, for example:
-
----------------------------------------------------
-mitigations(low, []).
-mitigations(medium, ["Ensure regular monitoring and communication."]).
-mitigations(high, [
-    "Reassign critical tasks to senior staff&#8203;:contentReference[oaicite:41]{index=41}",
-    "Reduce workload on less critical tasks to free resources&#8203;:contentReference[oaicite:42]{index=42}",
-    "Extend project timeline to avoid overtime costs&#8203;:contentReference[oaicite:43]{index=43}",
-    "Simplify project scope to eliminate non-essential features&#8203;:contentReference[oaicite:44]{index=44}"
-]).
----------------------------------------------------
-
-In the above, Low risk has no suggested actions (empty list or maybe a note that no major mitigation is needed), Medium might have a generic suggestion or two (since the document focused mostly on high risk mitigations), and High risk has a list of concrete actions. The examples included (cited from the document) cover resource reassignment, reallocation, timeline adjustment, scope reduction, etc., which directly address high-risk factors. We have included a few as an illustration – in implementation we might include all relevant suggestions from the table (team composition changes, outsourcing, etc.). These suggestions will be returned as a list of strings.
- 
-Alternatively, we could generate suggestions conditionally (e.g., if the project is high risk because of low margin, then include a suggestion about adjusting pricing). However, that level of granular tailoring may be beyond scope initially. Instead, we provide a fixed set of best-practice mitigations for any high risk project, which is simpler and still useful.
-
-•	Main Predicate: We will write a main predicate assess_risk that ties everything together. This predicate will take all six inputs (and possibly the weights), compute the total score, determine the risk classification, and fetch the suggestions. For example:
-
----------------------------------------------------
-assess_risk(Margin, ProjType, Sia, Contract, Rel, Client, Risk, Suggestions) :-
-    % calculate total score
-    total_score(Margin, ProjType, Sia, Contract, Rel, Client, Score),
-    % determine risk level
-    (  high_risk_condition(Margin, ProjType, Sia, Contract, Rel, Client)
-    -> Risk = high
-    ;  (Score > 70 -> Risk = high;
-         Score >= 40 -> Risk = medium;
-         Risk = low)
-    ),
-    % get suggestions for that risk
-    mitigations(Risk, SuggestionsList),
-    Suggestions = SuggestionsList.
----------------------------------------------------
-
-If we include weights as parameters, assess_risk would have six extra params and call total_score with weights accordingly. But assuming default weights are embedded, the above is the logic. We use Prolog’s if-then (->) and semicolon for else to handle the priority of high risk condition. This ensures that any high-risk pattern results in Risk = high immediately. Otherwise, we fall through to use the numeric threshold classification. We then retrieve the corresponding SuggestionsList and unify it with Suggestions to return it. The Suggestions could be a list or a single string; in our design, we’ll treat it as a list of strings for flexibility. (When converting to display, the Python side will iterate the list.)
-
-•	Prolog Enumerations and Data Types: The Prolog code will treat ProjType, Contract, etc., as atoms as given (we'll ensure to use the same atoms from the input mapping). SIA complexity will be treated as an integer (which is fine for numeric comparison in Prolog). The margin is a float, and SWI-Prolog can handle comparisons with floats as used above. We must be careful to include the is operator when doing arithmetic (Score is ...) and use comparison operators for numeric comparisons (<, =<, >, >=) as in the examples.
-
-•	Knowledge Base Initialization: We will include all the above facts and rules in the Prolog source file. Additionally, we might include some documentation or :- use_module(library(clpfd)). if needed for constraints (though simple arithmetic comparisons don’t need it). We will test the Prolog knowledge base independently with some queries to ensure it behaves as expected (for example, querying assess_risk(5, execution_only, 5, fixed_price, new, private, Risk, Sug) should yield Risk = high with a list of suggestions, given that 5% margin, execution-only, etc., is a worst-case scenario).
-
-By encoding the scoring tables and logical rules in Prolog, we leverage the knowledge-based approach to determine risk. The structure mirrors the expert rules and weights given in the document: each attribute’s impact is quantified and the final decision is derived through a combination of numeric scoring and logical conditions. This Prolog knowledge base serves as the “brain” of our application, which the Streamlit front-end will query.
-
-Integration with Prolog Backend (PySWIP or Subprocess)
-To connect the Streamlit app with the Prolog logic, we will use one of two approaches:
- 
-    1. PySWIP (SWI-Prolog Python Integration): PySWIP is a library that allows embedding SWI-Prolog into Python. Using PySWIP, we can load the Prolog knowledge base and query it directly from within the Streamlit app:
-        •	We will install PySWIP in the project environment (e.g., via pip). We must also ensure SWI-Prolog is installed on the server where the Streamlit app runs, as PySWIP interfaces with it.
-        •	At the top of our Streamlit app script (or in a cached function), we will initialize the Prolog engine:
-
----------------------------------------------------
-from pyswip import Prolog
-prolog = Prolog()
-prolog.consult("risk_rules.pl")  # load our Prolog knowledge base
----------------------------------------------------
-
-We will do this once (perhaps using @st.cache_resource to avoid reloading on each run). If risk_rules.pl is in the app directory, this will load all our facts and rules.
-
-        •	When the user submits the form, and after input validation, we will construct the query string. For example:
-
----------------------------------------------------
-
-query_str = f"assess_risk({margin}, {proj_atom}, {complexity}, {contract_atom}, {rel_atom}, {client_atom}, Risk, Suggestions)"
-
----------------------------------------------------
-
-If we included weights as parameters, we would append the six weight values in order as well. For now, assume default weights inside Prolog, so we don't pass them.
-
-        •	We will then invoke the query:
-
----------------------------------------------------
-
-results = list(prolog.query(query_str))
-
----------------------------------------------------
-
-The result will be a list of solution dictionaries (PySWIP returns Prolog variable bindings as Python dicts). We expect one solution, e.g., results[0] might be {'Risk': 'high', 'Suggestions': ['Reassign critical tasks...', 'Extend project timeline...', ...]}. (PySWIP will likely return atoms as Python strings, and lists as Python lists of strings.)
-
-        •	We parse the result: extract risk_level = results[0]["Risk"] and suggestions = results[0]["Suggestions"]. If the Prolog code returns the suggestions as a list of atoms or a list of strings, PySWIP should convert them to Python list of strings. We will confirm this with testing. If it's a single string or a complex term, we adjust accordingly (possibly modifying Prolog to ensure it's a straightforward list).
-        •	Finally, we use risk_level and suggestions to display output as described in the UI section. We might want to capitalize the risk level for display (e.g., "High" instead of "high"). We can do risk_level.capitalize() in Python.
-
-Using PySWIP keeps everything in one process and avoids parsing raw text output. It gives us structured data directly.
-
-    2. Subprocess calling SWI-Prolog: If PySWIP proves difficult (sometimes installation or environment issues can occur), an alternative is to run the Prolog engine as an external process. This approach would involve:
-        •	Ensuring the SWI-Prolog executable (swipl) is available on the system.
-        •	Using Python’s subprocess module to call a command that loads the Prolog file and executes the query. For example:
-
----------------------------------------------------
-import subprocess
-cmd = [
-    "swipl", 
-    "-q",  # quiet mode (no informational output)
-    "-s", "risk_rules.pl",  # consult our knowledge base
-    "-g", query_str,        # execute the query goal
-    "-t", "halt"            # halt after query finishes
-]
-result = subprocess.run(cmd, capture_output=True, text=True)
-output = result.stdout
----------------------------------------------------
-
-Here, query_str would need to be something like "assess_risk(12.5, planning_and_execution, 3, hourly, established, government, Risk, Suggestions), write(Risk), write(','), write(Suggestions)". We include write statements to output the variables to stdout in a parseable way (separating risk and suggestions by a comma or special delimiter). The output might look like high,[Reassign critical tasks..., Extend project timeline,...] as a raw text.
-
-        •	We would then parse the text. For example, split at the comma to get risk part and suggestions part. We might need to do some string cleaning (remove brackets and quotes, etc., to reconstruct a Python list of suggestions).
-        •	This method is more error-prone in parsing and somewhat slower (it starts a new Prolog process for each query), but it's a viable fallback if embedding fails. For a single query at a time, performance is not a big concern, but we would prefer PySWIP for elegance and speed.
-
-In either case, we will implement error handling (described in the next section) around the Prolog call. For development and testing, PySWIP is convenient. We will make sure to properly handle the case where no solution is found or an error occurs (though ideally, our assess_risk predicate should always succeed with one solution given valid inputs).
- 
-Session Management: Streamlit runs the script top-to-bottom on each interaction, which means if we naively consult the Prolog file inside the submit handler, it might reload it each time. To avoid reloading the knowledge base on every form submission, we will initialize the Prolog environment exactly once. We can do this with Streamlit’s session state or caching:
-    
-    •	Use st.session_state: e.g., do if 'prolog' not in st.session_state: st.session_state.prolog = Prolog(); st.session_state.prolog.consult("risk_rules.pl"). Then use st.session_state.prolog.query(query_str). This keeps the Prolog engine alive across runs.
-    •	Or use @st.cache_resource on a function that returns an initialized Prolog instance. Cached resources persist across reruns unless the file changes.
-
-This ensures efficiency. It also means any dynamic changes to rules (unlikely in this app) would not be picked up unless we clear cache, but since rules are static (except weight parameters which we pass in), that's fine.
- 
-Testing the Prolog Query: We will test queries with known inputs to ensure the integration works:
-
-    •	For example, call assess_risk(5, execution_only, 5, fixed_price, new, private, Risk, Suggestions) via PySWIP and see if we get Risk = high. We will do this during development in a separate environment or within the app with test inputs.
-    •	Ensure that the data types come through correctly (e.g., Margin as float, Sia as int, atoms as atoms). If something is off (like Prolog expecting an atom and getting a Prolog string), we might adjust by quoting the atom in the query string or using PySWIP Atom class. Since we plan to supply atoms as raw lowercase strings in the query text, it should be fine.
-
-By integrating via PySWIP, the Streamlit app can directly leverage the Prolog engine. The user experience will be clicking "Evaluate Risk" and, under the hood, the app does Prolog.query to get results in milliseconds. This feels instantaneous to the user. The complexity of the Prolog inference is hidden behind a simple Python call, making our interface responsive and interactive.
-
-## Part IV: Error Handling and Fallback Strategies
-Robust error handling is crucial to ensure the app doesn’t crash and provides useful feedback if something goes wrong. We will implement the following safeguards and fallbacks:
-
-•	Prolog Engine Availability: If the Prolog backend is not set up or fails to load, the app should detect this and respond gracefully:
-    •	When consulting the Prolog file, we will wrap the call in a try-except. For example:
-
----------------------------------------------------
-try:
-    prolog.consult("risk_rules.pl")
-except Exception as e:
-    prolog_available = False
-    st.error("Knowledge base could not be loaded. Risk assessment is unavailable.")
-else:
-    prolog_available = True
----------------------------------------------------
-
-If the Prolog file is missing or has syntax errors, this will catch it. We’ll set a flag prolog_available. If false, our submit handler can either skip calling Prolog or use a fallback logic (see below).
-    •	Similarly, if using subprocess, check the return code. If result.returncode != 0, that means Prolog encountered an error. We would then log result.stderr (possibly print to console or show a brief message to user like "Internal error in risk evaluation").
-
-•	Query Execution Errors: Even if the KB loads fine, something could go wrong during query (though our rules are straightforward). We will still guard the query call:
-
----------------------------------------------------
-try:
-    results = list(prolog.query(query_str))
-except Exception as e:
-    st.error("An error occurred while evaluating risk. Please try again.")
-    # Optionally log e for debugging.
-    return
----------------------------------------------------
-
-If a query times out or returns no results (which would be unusual here), we handle that. In case of no result, results list would be empty. We can check:
-
----------------------------------------------------
-if len(results) == 0:
-    st.error("Unable to determine risk with the given inputs.")
-    return
----------------------------------------------------
-
-This scenario might occur if inputs somehow don't match any rule (which shouldn't happen, since our risk rules cover all cases, but it's a safety net).
-
-•	Input Validation Errors: As described, if weights sum is wrong, we show an error and do not call Prolog. The user can fix and resubmit. Similarly, if any required field is missing (Streamlit forms typically ensure something is selected for selectboxes/radios by default, so missing data is unlikely), we would handle that before query. We might mark fields as required in the UI text.
-
-•	Fallback without Prolog: If prolog_available is False (e.g., during early development or if deployed somewhere without SWI-Prolog), we will use a Python fallback to compute the risk. This ensures the app still functions (perhaps with a note that it’s in "demo mode"). The fallback could simply mimic the Prolog logic:
-    •	We will implement a Python function compute_risk_python(margin, proj_type, sia, contract, rel, client, weights) that uses the same rules. For example, it would:
-        •	Determine each attribute score (using the same thresholds: margin <10 -> 30, etc.).
-        •	Sum to get total_score.
-        •	Apply the 40/70 thresholds for risk classification.
-        •	(Optionally apply the high-risk override rules as well).
-        •	Return risk and suggestions list.
-    •	If Prolog is not available, our submit handler will call this Python function instead of prolog.query. The user should ideally not notice any difference in output.
-    •	We will clearly comment this in code and possibly log a warning. If this app is intended for production use, we’d want the Prolog backend set up; the Python fallback is mainly for testing and ensuring continuity.
-
-•	Synchronizing Fallback with Prolog: We must keep the Python logic consistent with the Prolog logic. Whenever we update rules in Prolog, we should update the Python fallback. This duplication is acceptable for a small rule set and aids testing. In fact, this provides a way to unit-test the intended logic without Prolog.
-
-•	User Feedback and Logging: For any error that we catch and handle, we’ll provide user feedback via st.error or st.warning as appropriate. But we will avoid exposing technical details to the user in the UI (to not confuse them). Instead, we may log technical errors in the server logs for debugging. For instance, if prolog.consult fails due to a syntax error in the Prolog file, we might log the exception message. If the Prolog query fails due to a missing SWI installation, the exception might indicate that, and we could log it as well.
-
-•	Edge-case Handling:
-    •	If by some chance the user inputs extremely unusual values (like margin = 100 or complexity outside 1-5 via some bug), our fallback and Prolog might not have rules. The Prolog margin_score rules, for example, don’t explicitly handle margin = 100, but the < 10 / >= 10, =<15 / >15 covers it (100 > 15 -> score 0, which is fine). Complexity outside 1-5 wouldn’t match any fact; in Python fallback we could clamp it to 5 if >5 or to 1 if <1. But the UI already restricts complexity slider to [1,5]. So we are safe.
-    •	If suggestions list is empty (for low risk), we will simply not display the suggestions section or show a message "No mitigations required." Our code will handle both cases (if Suggestions list is empty vs non-empty).
-
-•	Parallel Queries or State: The app is single-user interactive, but if deployed and multiple users use it concurrently, each click triggers a separate run. PySWIP’s Prolog engine might be shared; however, since our queries have no side effects (we’re not asserting/retracting facts per query), it should handle concurrent queries fine. If needed, we can instantiate a new Prolog for each query, but that’s heavier. PySWIP doesn’t inherently support multi-threaded queries; since Streamlit runs each session separately (each user in a separate session state), we might be okay. It’s something to be aware of if scaling up. As a fallback, using subprocess would avoid any state conflict because each query is isolated.
-
-By implementing these error handling measures, we ensure the application is robust. In the worst case scenario (no Prolog engine), the app still produces a result using the encoded logic in Python, thereby demonstrating the functionality. In the best case (Prolog running), any issues will be caught and reported without causing the app to crash or hang indefinitely.
-
-## Part V: Testing and Development Plan (Without Full Prolog Implementation)
-
-During development, we will take a phased approach to test the interface and logic even before the Prolog backend is fully implemented:
-•	UI Component Testing: First, we will run the Streamlit app with just the UI form (no Prolog calls) to ensure all widgets display correctly and the expander for weights works. We will manually verify:
-    
-    •	The default values are correctly set (e.g., the weight fields show 0.30, 0.20, etc., summing to 1.0).
-    •	Changing values in the form does nothing until hitting submit (with st.form, this is the case).
-    •	The help texts on inputs (if implemented) appear when hovering the info icon.
-    •	The layout is visually clean (e.g., maybe adjust using st.columns if needed to align some fields, though likely fine vertically).
-
-•	Validation Testing: Next, test the validation logic:
-   
-    •	Try an incorrect weight combination (e.g., set weights summing to 0.8) and hit "Evaluate Risk". Expect an error message and no further output. Adjust weights to fix sum and resubmit, now it should proceed.
-    •	Leave all weights at default (sum=1) and submit to ensure it passes validation.
-    •	Test boundary cases for margin input: 0%, 10%, 15%, >15%. We will print or log what category our Python fallback puts these in (to verify the thresholds are applied as intended: <10 should be considered high risk factor, 10 exactly should fall in medium category range 10–15, 15 exactly medium, 16 as >15 should be low risk factor for margin).
-    •	If negative margin were allowed, test -5 (should likely be treated as <10, and thus high risk factor for margin). But if we disallow negatives in the input, this is moot.
-
-•	Python Logic Simulation: Before the Prolog rules are ready, we implement compute_risk_python that mirrors the Prolog logic:
-
----------------------------------------------------
-def compute_risk_python(margin, proj_type, sia, contract, rel, client, weights):
-    # weights is a tuple/list of 6 weights summing to 1
-    # Compute scores:
-    score = 0
-    # Margin score
-    if margin < 10: score += 30 * (weights[0]/0.30)  # adjust if weights changed
-    elif margin <= 15: score += 15 * (weights[0]/0.30)
-    # else >15: score += 0
-    # Project Type score
-    if proj_type == "execution_only": score += 20 * (weights[1]/0.20)
-    elif proj_type == "planning_and_execution": score += 10 * (weights[1]/0.20)
-    # planning_only: +0
-    # ... and so on for other attributes ...
-    # After summing:
-    risk = None
-    if score > 70: risk = "High"
-    elif score >= 40: risk = "Medium"
-    else: risk = "Low"
-    # Suggestions based on risk
-    if risk == "High":
-        suggestions = ["Reassign critical tasks to senior staff", "Extend project duration to avoid overtime", ...]
-    elif risk == "Medium":
-        suggestions = ["Maintain frequent client communication", "Allocate contingency budget"]
-    else:
-        suggestions = []
-    return risk, suggestions
----------------------------------------------------
-
-This function uses the same thresholds and default scores. Notice we included a factor (weights[i]/default_weight) to adjust the score if weights changed. For example, if the margin weight is increased to 0.40, (weights[0]/0.30) would be 1.333, so a <10% margin would score 30*1.333 = 40, effectively reflecting the new weight. This approach ensures the Python simulation aligns with what the Prolog dynamic weighting would do. We will test this function with various weight sets:
-    
-    •	Default weights (should replicate Table 4–9 exactly).
-    •	Custom weights (e.g., all equal ~0.167 each, or one attribute weighted very high and others low) to see if the risk classification shifts intuitively.
-
-•	Manual Test Cases: We will run a series of test cases through the Streamlit app using the Python fallback to verify correctness:
-    
-    1.	High Risk Scenario (expected): e.g. Margin = 5%, Project Type = Execution Only, Complexity = 5, Contract = Fixed, Client Rel = New, Client Type = Private. We predict this is High risk by both rule (it triggers multiple high-risk conditions) and score (likely near 100). The app should output "High Risk" and list mitigations. We verify the suggestions appear.
-    2.	Low Risk Scenario: e.g. Margin = 20%, Project Type = Planning Only, Complexity = 1, Contract = Hourly, Client Rel = Established, Client Type = Government. This should be Low risk (good margin, minimal complexity, etc., matches the low-risk conditions). The app should output "Low Risk" and either no suggestions or a message like "No major risks identified." We verify the formatting (maybe it just shows "Low Risk" in green and no suggestions section).
-    3.	Medium Risk Scenario: e.g. Margin = 12%, Project Type = Planning & Execution, Complexity = 3, Contract = Fixed, Client Rel = Established, Client Type = Private. This is a mixed case: margin is mid-range, contract is riskier type, complexity moderate. Numerically, margin 12% gives 15 points, fixed contract 15 points, complexity 3 gives 9, project type 10, relationship 0, client 10 → total ~59 points. That falls in Medium range (40–70). Also check rule: margin in 10–15 and contract fixed triggers the Medium rule condition from doc. So it should classify as Medium. The app should show "Medium Risk" (perhaps in amber). We also verify if any suggestions are given for Medium (we might have one generic suggestion).
-    4.	Edge of Boundary: Margin = 10% exactly, with other factors neutral. According to numeric rules, 10% is within 10–15, which yields 15 points, so one might be borderline. We can test margin = 10, others such that total = 40 exactly (say project type planning only 0, complexity 1 ->0, contract hourly 0, rel established 0, client government 0, total 15 actually). Actually to get exactly 40, we might do margin 10% (15 pts) and client private (10) and rel new (10) and something that gives 5 more, but none gives 5, complexity level2 gives 6, that would total 41. Alternatively margin slightly under 10 can yield 30, plus something 10 = 40. For example, margin 9.5% (30) + client private (10) = 40. That should classify as Medium (since 40 is the lower bound of medium range). Meanwhile 39 would be Low. We test such boundary to ensure our inequality signs are correct (we used Score >= 40 as medium, so 40 counts as Medium as intended).
-    We will compare the output of the Python simulation to the expected outcomes from the document rules for each case, ensuring they match the expert criteria given.
-
-•	Integrating Prolog Backend: Once the Python logic is verified, we will integrate the actual Prolog. Initially, we can run the Prolog file in SWI-Prolog REPL with test queries to ensure it yields correct answers:
-    
-    •	Query some known cases as above in the Prolog interpreter. Check that the risk outcome and any suggestions unify as expected. This will catch any mistakes in Prolog syntax or logic (for instance, if our high_risk_condition rules need tweaking).
-    •	After that, switch the Streamlit code to use PySWIP. Then test the same scenarios through the Streamlit UI but now with Prolog answering. If we've done everything right, the outputs should be identical to the Python fallback's outputs. We will verify they are.
-    •	We should also test a scenario where the high-risk logical rule overrides the numeric. For example, margin 18% (which by itself is 0 points) but Project = Execution-only, Complexity = 5, New client. Numerically: 0 + 20 + 15 + (contract say hourly 0) + 10 + (client private 10) = 55 (Medium by score). But logically, execution-only with complexity ≥4 and new client meets a high-risk condition. Our system should classify that as High (due to the rule override). We test this with Prolog to ensure high_risk_condition triggers. This validates that our combined logic is working (and is an example where expert rules augment the numeric method).
-
-•	Performance Test: The dataset (6 inputs) is very small, so performance isn’t a big issue. But we will ensure that repeated submissions don’t lead to resource leaks or slowdown:
-    
-    •	With PySWIP, ensure that each query doesn’t accumulate facts or leave choicepoints. Since our queries are deterministic (especially after adding cut or making conditions mutually exclusive), they should not leave open choice points. We might consider adding a cut (!) in the assess_risk predicate after determining risk, to prevent backtracking into alternative rules, but given our structure that might not be necessary. We’ll monitor if PySWIP returns more than one result when it shouldn’t.
-    •	With subprocess method (if used), each call is independent but slower. We’d test that even that completes within, say, <1 second, which it should for a single query.
-
-•	User Acceptance Testing: Finally, we can have a domain expert or a stakeholder try the app with various scenarios to see if the results align with expectations. They might try edge cases like "What if complexity is 5 and everything else looks good, does it show Medium or Low?" etc. We’ll collect feedback and adjust the rules if needed.
-
-Overall, by first using a Python simulation of the logic, we de-risk the development process: we can refine the logic quickly in Python, validate it against the documented criteria, and then confidently implement the same logic in Prolog. This way, when we switch to the Prolog backend, we already know the expected outcomes and can catch any integration issues. Additionally, this approach means the interface (Streamlit) can be fully tested without waiting for the Prolog component, providing a faster development cycle.
-
-## Part VI: Mapping of Scoring Tables and Rules to Prolog Code
-
-(Summary for clarity:) The scoring tables (Tables 4–9) have been directly translated into Prolog facts/rules under margin_score, project_score, complexity_score, etc., using the exact values from the tables. The normalized weights (Table 3) are inherently reflected in those scores (e.g., 30 points for margin corresponds to the 30% weight). The logical risk classification rules from the document have been captured in the Prolog high_risk_condition and similar predicates, while the numeric threshold criteria are implemented in risk_classification rules using the 40 and 70 cutoffs. Finally, the mitigation strategies outlined (such as reassigning staff, adjusting timeline, simplifying scope are stored in the Prolog knowledge base via the mitigations predicate, so that the Prolog query returns not just a risk level but also a tailored list of suggestions for high or medium risk cases.
- 
-By following this implementation plan, we will build a Streamlit web interface that is user-friendly and backed by a Prolog expert system. The plan covers all aspects from input UI design to Prolog integration, with careful attention to validation, error handling, and testability. This ensures that even before the Prolog component is fully ready, we can verify the behavior and provide a reliable tool for assessing project risk and profitability. The end result will be a seamless interface where users input project parameters and instantly receive a risk classification and guidance, powered by the encoded knowledge of domain experts.
+### Risk Score Calculation and Classification
+The overall risk score is calculated by summing all the individual attribute scores. This is done in the main predicate after obtaining each factor’s score:
+
+•	The Prolog predicate assess_risk(M, P, S, C, R, T, Risk, Suggestions) first calls each of the six scoring predicates:
+
+---------------code-block---------------
+
+    margin_score(M, SM),
+    project_score(P, SP),
+    complexity_score(S, SS),
+    contract_score(C, SC),
+    clientrel_score(R, SR),
+    clienttype_score(T, ST),
+
+---------------code-block-end---------------
+
+Each of these binds a score (SM, SP, SS, SC, SR, ST respectively).
+
+•	It then computes Total is SM + SP + SS + SC + SR + ST. This Total represents the aggregated risk score (0 to 100).
+
+After calculating the total score, the knowledge base determines the risk category. There are two ways a project can be classified as High risk: by meeting specific critical conditions, or by having a high total score. The logic is as follows:
+
+•	High-Risk Conditions (Rule Overrides): Certain combinations of inputs trigger a High risk classification regardless of the total score. These are encoded as high_risk_condition(...) rules. If any such condition is true, the project is immediately categorized as high risk. The conditions implemented are:
+
+    o	Projects with a very low margin in a Fixed Price contract: M < 10 and Contract = fixed_price ⇒ High Risk (because low profitability buffer on a fixed budget is dangerous).
+    o	Projects that are **Execution Only** with high complexity and a new client: ProjectType = execution_only and SIA Level >= 4 and Client Relationship = new ⇒ High Risk (because a complex execution with an unknown client is very risky).
+    o	Projects with a new private client and insufficient margin: Client Relationship = new and Client Type = private and M < 15 ⇒ High Risk (private new clients with low margin could indicate pricing risks or payment uncertainty).
+
+These rules are checked in the assess_risk predicate using an if-then construct. In Prolog, it appears as:
+
+---------------code-block---------------
+
+    ( high_risk_condition(M, P, S, C, R, T) ->
+          Risk = high
+    ;   risk_classification(Total, Risk) ),
+
+---------------code-block-end---------------
+
+This means: if any high_risk_condition is true for the given inputs, set Risk = high; otherwise, fall through to the normal scoring classification.
+
+    •	Score-Based Classification: If no high-risk override condition triggered, the tool uses the Total score to classify risk:
+        o	risk_classification(S, high) if S > 70. (Scores above 70 out of 100 are considered High Risk.)
+        o	risk_classification(S, medium) if 40 =< S =< 70. (Scores in 40–70 range are Medium Risk.)
+        o	risk_classification(S, low) if S < 40. (Scores below 40 are Low Risk.)
+
+These thresholds (40 and 70) are chosen according to the domain requirements to delineate risk levels.
+Using this approach, every project will be labeled as **high**, **medium**, or **low** risk by the Prolog rule. The logic ensures one (and only one) category applies because either a high risk condition is met or the classification by score is used.
+
+### Mitigation Suggestions
+The knowledge base also stores predefined mitigation advice for each risk level, via the mitigations(Level, SuggestionsList) predicate:
+
+    •	For low risk, the suggestions list is empty ([]), meaning no immediate action is required.
+    •	For medium risk, there is a list with one suggestion:
+        o	"Increase client communication." – indicating a need for more engagement to manage expectations and prevent issues from escalating.
+    •	For high risk, a list of several suggestions is provided:
+        o	"Reassign critical tasks to senior staff." (Mitigate risk by involving more experienced personnel)
+        o	"Extend project timeline to avoid overtime." (Mitigate schedule risk by giving more buffer)
+        o	"Simplify scope to reduce risk." (Mitigate scope creep or complexity risk by limiting project scope)
+
+The assess_risk predicate, after determining the Risk category, calls mitigations(Risk, Suggestions) to retrieve the appropriate suggestion list for that risk level. This list (which may be empty or contain multiple string items) is then returned back through the Suggestions output variable.
+
+### The assess_risk/7 Predicate
+In summary, the Prolog knowledge base’s main entry point is assess_risk(M, P, S, C, R, T, Risk, Suggestions), which ties everything together:
+
+    1.	It computes each attribute’s score via helper predicates.
+    2.	Sums the scores to get Total.
+    3.	Checks for any high-risk conditions; if found, sets Risk = high.
+    4.	Otherwise, uses the total score to classify Risk as high, medium, or low.
+    5.	Retrieves the corresponding Suggestions list for the determined risk level.
+
+This predicate is defined to succeed exactly once per set of inputs (assuming inputs are within expected ranges and types), producing one risk classification and one suggestions list.
+
+Because the logic is encapsulated in Prolog, adding or modifying rules (such as introducing new risk factors or conditions) can be done by editing the risk_rules.pl file without changing the Python code. The Python side simply queries this predicate to get results.
+
+## Python–Prolog Integration (utils/prolog_interface.py)
+The prolog_interface.py module serves as the bridge between the Streamlit app and the Prolog knowledge base. It uses the PySWIP library to embed a SWI-Prolog engine in Python. Key implementation details in this module include:
+
+### Initializing the Prolog Engine and Loading Rules
+When utils.prolog_interface is imported (for example, when app.py runs from utils.prolog_interface import assess_risk), the following happens:
+
+    •	A Prolog instance is created: prolog = Prolog(). This initializes the SWI-Prolog engine in the background so that queries can be executed.
+    •	The path to the risk_rules.pl file is constructed. The code uses os.path.abspath and os.path.join to find the risk_rules.pl file located in the prolog directory relative to the module. It also replaces backslashes with forward slashes for Windows compatibility. This results in a string path like /full/path/to/prolog/risk_rules.pl.
+    •	The Prolog engine consults the knowledge base file to load all the rules. In code, this is done with:
+
+---------------code-block---------------
+
+    list(prolog.query(f"consult('{prolog_file}')"))
+
+---------------code-block-end---------------
+
+Using prolog.query to consult the file is a workaround for a known PySWIP issue with the consult method and file paths. This query executes the Prolog directive to load the file. After this step, the Prolog engine has all the predicates (like assess_risk/7) defined and ready to use.
+(A debug print statement print("CONSULTING:", prolog_file) may be present to log the file being loaded, which helps in development to ensure the correct file is found. In production, this could be removed or replaced with proper logging.)
+
+### The assess_risk Python Function
+The prolog_interface.py module defines a function def assess_risk(margin, proj, sia, contract, rel, client): which the Streamlit app calls to perform the risk analysis. This function orchestrates the query to Prolog and handles the results:
+
+1.	Query String Construction: The function builds a Prolog query string using the input parameters. Given the inputs (margin, proj, sia, contract, rel, client) which are expected to be Python primitives or strings:
+    o	margin (float or int) and sia (int) are numeric, so they are inserted directly.
+    o	proj, contract, rel, client are strings corresponding to Prolog atoms (e.g., "execution_only", "fixed_price"). These need to be quoted in the query so that Prolog interprets them as atoms (not variables). The code does this by wrapping each in single quotes within the f-string.
+    o	The query is formatted as:
+
+---------------code-block---------------
+
+    query = (
+        f"assess_risk({margin}, "
+        f"'{proj}', {sia}, '{contract}', '{rel}', '{client}', Risk, Suggestions)"
+    )
+
+---------------code-block-end---------------
+
+For example, if the function was called as assess_risk(8.0, "execution_only", 5, "fixed_price", "new", "private"), the resulting query string would be:
+"assess_risk(8.0, 'execution_only', 5, 'fixed_price', 'new', 'private', Risk, Suggestions)".
+
+Here, Risk and Suggestions are Prolog variables that will be unified with the output when the query runs.
+
+2.	**Executing the Prolog Query**: The function calls the Prolog engine with results = list(prolog.query(query)). This sends the constructed query to the SWI-Prolog engine and collects all solutions. In this specific case, the assess_risk predicate is designed to yield one solution for valid inputs. The result is a list containing at most one dictionary. Each dictionary represents a solution, with keys corresponding to the Prolog variable names in the query. For instance, a typical result might be:
+results == [ {"Risk": "high", "Suggestions": ["Reassign critical tasks to senior staff.", ...]} ].
+If the input values were somehow outside the expected domain (for example, an unknown project type string), the query could return no results (an empty list).
+
+3.	**Handling Query Results**: The code checks if results is empty:
+       o	If no result was returned, the function returns ("unknown", []). This is a safety fallback indicating that the risk could not be assessed (perhaps due to an input issue). In normal operation with correct inputs, this path shouldn't occur because the UI restricts inputs to known values.
+       o	If a result is present, the code takes the first (and only) solution dictionary: result = results[0]. It then extracts Risk = result["Risk"] and Suggestions = result["Suggestions"]. These correspond to the Prolog output:
+           	Risk will be a Prolog atom 'low', 'medium', or 'high' which PySWIP converts into a Python string.
+           	Suggestions will be a Prolog list of text (strings). PySWIP converts this into a Python list. If the list was empty in Prolog, it becomes an empty Python list []. If it contained strings, those appear as Python strings in the list.
+       o	The function returns a tuple (Risk, Suggestions) back to the caller (app.py). For example, it might return ("high", ["Reassign critical tasks to senior staff.", "Extend project timeline to avoid overtime.", "Simplify scope to reduce risk."]).
+
+This Python function abstracts away the Prolog interaction, so the Streamlit app doesn’t need to deal with query syntax or Prolog internals. It simply supplies Python values and gets Python-friendly results.
+Because the Prolog engine was loaded at module import time, subsequent calls to assess_risk are fast – they re-use the already consulted knowledge base. This design ensures that the Prolog consulting (which can be relatively slow if done repeatedly) happens only once.
+
+### No Python-side Risk Computation
+It is important to note that **all risk scoring logic is executed in Prolog**. The Python code does not attempt to compute the risk level or suggestions on its own. There is no compute_risk_python or similar function in use. By centralizing the logic in the Prolog knowledge base, we avoid duplicating rules in Python. The Python side only handles input format conversion and output display. This simplifies maintenance and guarantees consistency (there’s a single source of truth for risk rules in Prolog).
+The decision to not include a Python fallback means that the application relies on the Prolog engine being available and functioning. In this implementation, PySWIP suffices to bridge to SWI-Prolog, so no external swipl subprocess is invoked. The system assumes SWI-Prolog is properly installed and accessible to PySWIP. All queries are done in-memory through PySWIP's foreign function interface, which is efficient for an interactive app setting.
+
+## Suggestions for Further Improvements
+While the current implementation is fully functional, there are several opportunities to enhance modularity, flexibility, and testability:
+
+•	**Dynamic Weight Integration**: Extend the system to truly use the user-adjusted weights. For example, the app could modify the Prolog knowledge base at runtime by scaling the score thresholds (e.g., if the user sets Margin weight to 0.25 instead of 0.30, adjust the margin_score points accordingly to max 25 points). This could be achieved by generating a Prolog query to update facts or by re-consulting a temporary Prolog file with adjusted values. This feature would make the weight sliders directly influence the outcome, providing a more interactive modeling tool.
+
+•	**Modular Knowledge Base**: Refactor risk_rules.pl to separate clearly the knowledge (facts) from the logic. For instance, define all weight-based scores as facts or a structured list that can be easily updated or iterated over. This would simplify adding new criteria or changing weights. Moreover, consider loading multiple knowledge base files (one for scoring rules, one for thresholds and suggestions) for better organization.
+
+•	**Automated Testing**: Develop a suite of unit tests for the risk logic. This could include:
+    o	Prolog-side tests: Using PySWIP in a test environment to call assess_risk with various known inputs and verifying that the output risk and suggestions match expected values (e.g., a margin of 5% should yield High risk with specific suggestions).
+    o	Python-side tests: Mock the prolog.query responses to test that prolog_interface.assess_risk correctly handles conversion of outputs (e.g., empty results, or various suggestion lists), and that app.py correctly interprets and displays them.
+
+•	**Error Handling and Robustness**: Improve handling of unexpected scenarios. For instance, if Prolog returns an "unknown" risk (empty result) or if PySWIP encounters an error, the app could catch this and show a user-friendly message (instead of just "unknown"). Implement logging for the Prolog query and results to help debug any issues in production.
+
+•	**Feature Expansion**: Consider incorporating additional factors into the risk assessment model (and updating the UI accordingly). For example, project timeline, budget size, or team experience could be added to the knowledge base. Thanks to the modular design, this would mainly involve updating risk_rules.pl and the Streamlit form, while the integration layer (assess_risk function) would remain largely unchanged.
+
+•	**UI/UX Enhancements**: Provide more context to the user on what each factor means. For instance, tooltips or descriptions for each input field can guide the user. Additionally, after obtaining results, the app might display a breakdown of the score composition (how much each factor contributed) to increase transparency. This could be done by extending Prolog to return the component scores or by recalculating them in Python using the same rules for display purposes.
+
+•	**Caching and Performance**: Although the data volume is small, using Streamlit’s state or caching (st.cache_data or similar) for the Prolog engine or results might further optimize performance, especially if the app will be used frequently or with repetitive queries. For example, ensure the Prolog consulting is done only once per session. PySWIP already handles this by persistent engine, but additional caching of results for identical inputs could be considered if needed.
 

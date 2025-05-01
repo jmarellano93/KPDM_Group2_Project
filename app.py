@@ -3,6 +3,19 @@ from utils.prolog_interface import assess_risk
 
 st.title("Project Risk Assessment Tool")
 
+st.write("""
+Welcome to the Project Risk Assessment Tool.
+
+Please enter the required project parameters below. The tool will evaluate and classify your project as **Low**, **Medium**, or **High** risk based on key factors such as expected margin, complexity, client type, and contract type.
+
+If the project is determined to be medium or high risk, you will receive tailored **cost mitigation suggestions**.
+
+By default, weights are applied to each parameter based on standardized importance. You may optionally adjust these weights by expanding the **Adjust Attribute Weights** section.
+
+To begin, fill out the form below and click **Evaluate Risk**.
+""")
+
+
 with st.form("risk_form"):
     margin = st.number_input("Expected Margin (%)", min_value=0.0, max_value=100.0, value=0.0, step=0.1)
     proj_type = st.selectbox("Project Type", ["Execution Only", "Planning Only", "Execution & Planning"])
