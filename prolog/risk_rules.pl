@@ -1,61 +1,74 @@
-% Prolog Knowledge Base for Risk Assessment
+% --- Risk Level Downgrade Hierarchy ---
+% Defines how risk levels can be downgraded (High->Medium->Low)
+downgrade(high, medium).   % High risk can be downgraded to medium
+downgrade(medium, low).    % Medium risk can be downgraded to low
+downgrade(low, low).       % Low risk cannot be downgraded further
 
-% Margin Scoring
-margin_score(M, 30) :- M < 10.
-margin_score(M, 15) :- M >= 10, M =< 15.
-margin_score(M, 0)  :- M > 15.
+% --- Core Risk Classification Rules ---
+% Determines initial risk level based on project parameters
+% Parameters: Margin (float, e.g., 0.1 for 10%), ProjectType (atom), SIA (integer 1-5),
+%             ContractType (atom), ClientRel (atom), ClientType (atom), RiskLevel (atom)
+risk_classification(Margin, ProjectType, SIA, ContractType, ClientRel, ClientType, RiskLevel) :-
+    % HIGH RISK CONDITIONS (ANY of these must be true)
+    (
+        (Margin < 0.1, (ContractType = fixed_price ; SIA >= 4)) ;   % Low margin + fixed-price or high complexity
+        (ProjectType = execution_only, (SIA >= 4 ; ClientRel = new)) ;   % Execution-only with complexity or new client
+        (ClientType = private, ClientRel = new, Margin < 0.15)   % New private client with low margin
+    )
+    -> RiskLevel = high ;
 
-% Project Type
-project_score(execution_only, 20).
-project_score(planning_and_execution, 10).
-project_score(planning_only, 0).
+    % MEDIUM RISK CONDITIONS (ALL must be true + EITHER clause)
+    (
+        (Margin >= 0.1, Margin =< 0.15,   % Margin in moderate range
+            (
+                (ProjectType \= execution_only, SIA = 3) ;   % Not execution-only with medium complexity
+                ContractType = fixed_price % OR fixed-price contract
+            )
+        )
+    )
+    -> RiskLevel = medium ;
 
-% SIA Complexity
-complexity_score(5, 15).
-complexity_score(4, 12).
-complexity_score(3, 9).
-complexity_score(2, 6).
-complexity_score(1, 0).
+    % LOW RISK CONDITIONS (ALL must be true + EITHER clause + NEGATION)
+    (
+        (Margin > 0.15,   % Healthy margin
+            (
+                ClientType = government ;   % Government client
+                (ClientRel = established, ProjectType \= execution_only) % OR established relationship + not execution-only
+            ),
+            % NEGATION RULE: Exclude execution-only projects with high complexity and new clients
+            \+ (ProjectType = execution_only, SIA >= 4, ClientRel = new)
+        )
+    )
+    -> RiskLevel = low ;
 
-% Contract Type
-contract_score(fixed_price, 15).
-contract_score(hourly, 0).
+    % Default catch-all if no other rule matches.
+    RiskLevel = undefined_risk_profile.
 
-% Client Relationship
-clientrel_score(new, 10).
-clientrel_score(established, 0).
+% --- Profit-Based Override Rules ---
+% Applies risk downgrades based on profitability
+% Parameters: InitialRiskLevel (atom), Profit (float/integer), Margin (float), FinalRisk (atom)
 
-% Client Type
-clienttype_score(private, 10).
-clienttype_score(government, 0).
+% Rule A/B: Downgrade risk if profit > 2,000,000 CHF OR margin > 20% (0.20)
+override_risk(InitialRiskLevel, Profit, Margin, FinalRisk) :-
+    (InitialRiskLevel \= undefined_risk_profile), % Only override if initial risk is defined
+    (Profit >= 2000000 ; Margin >= 0.20),   % Either condition met
+    downgrade(InitialRiskLevel, FinalRisk),!. % Apply one-level downgrade and cut
 
-% High risk conditions
-high_risk_condition(M, _, _, fixed_price, _, _) :- M < 10.
-high_risk_condition(_, execution_only, S, _, new, _) :- S >= 4.
-high_risk_condition(M, _, _, _, new, private) :- M < 15.
+% Default case: No override applied, or initial risk was undefined
+override_risk(InitialRiskLevel, _, _, InitialRiskLevel).   % Keep original risk level
 
-% Risk classification
-risk_classification(S, high) :- S > 70.
-risk_classification(S, medium) :- S >= 40, S =< 70.
-risk_classification(S, low) :- S < 40.
+% --- Main Risk Assessment Predicate ---
+% Combines classification and override rules for final risk determination
+% Parameters: Margin, ProjectType, SIA, ContractType, ClientRel, ClientType, Profit (Expected Absolute Profit CHF), FinalRisk
+assess_risk(Margin, ProjectType, SIA, ContractType, ClientRel, ClientType, Profit, FinalRisk) :-
+    % Step 1: Determine initial risk classification
+    risk_classification(Margin, ProjectType, SIA, ContractType, ClientRel, ClientType, InitialRiskLevel),
+    % Step 2: Apply profitability overrides if applicable
+    override_risk(InitialRiskLevel, Profit, Margin, FinalRisk).
 
-% Mitigations
-mitigations(low, []).
-mitigations(medium, ["Increase client communication."]).
-mitigations(high, [
-    "Reassign critical tasks to senior staff.",
-    "Extend project timeline to avoid overtime.",
-    "Simplify scope to reduce risk."
-]).
-
-% Main predicate
-assess_risk(M, P, S, C, R, T, Risk, Suggestions) :-
-    margin_score(M, SM),
-    project_score(P, SP),
-    complexity_score(S, SS),
-    contract_score(C, SC),
-    clientrel_score(R, SR),
-    clienttype_score(T, ST),
-    Total is SM + SP + SS + SC + SR + ST,
-    ( high_risk_condition(M, P, S, C, R, T) -> Risk = high ; risk_classification(Total, Risk) ),
-    mitigations(Risk, Suggestions).
+% Enum-like atoms for clarity (used in rules above):
+% ProjectType: execution_only, planning_only, planning_and_execution
+% ContractType: fixed_price, hourly
+% ClientRel: new, established
+% ClientType: private, government
+% RiskLevel: high, medium, low, undefined_risk_profile
