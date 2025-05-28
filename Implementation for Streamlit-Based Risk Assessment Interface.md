@@ -77,19 +77,20 @@ After the initial classification, override rules can downgrade the risk:
     • Conditions: If (Expected Margin > 20%) OR (Expected Absolute Profit > 2,000,000 CHF).
     • Action: The risk level is downgraded by one step using the downgrade/2 predicate (High → Medium, Medium → Low, Low → Low).
     • A cut (!) is used to ensure only one override (or the default) applies.
-    • The assess_risk/8 predicate calls risk_classification/7 and then override_risk/4 to produce the FinalRisk.
+
+The assess_risk/8 predicate calls risk_classification/7 and then override_risk/4 to produce the FinalRisk.
 
 ## 5.0 - Python-Prolog Interface (utils/prolog_interface.py)
 This module manages the interaction:
 
     1) Initialization: It starts a Prolog() instance and consults the risk_rules.pl file, handling path conversions and ensuring the rules are loaded.
     2) assess_risk(...) Function:
-    3) Accepts the 7 input parameters from app.py.
-    4) Converts the margin percentage to a float (e.g., 15.0 -> 0.15).
-    5) Constructs the Prolog query string assess_risk(0.15, ..., 100000.0, RiskLevel).
-    6) Executes the query using list(prolog.query(query)).
-    7) Robustly parses the result list, checking for the RiskLevel key as either a string or bytes, and decoding bytes if necessary.
-    8) Returns the RiskLevel string (e.g., 'low') or an error string ('error_in_assessment', 'undefined_risk_profile') if issues occur.
+        2.1) Accepts the 7 input parameters from app.py.
+        2.2) Converts the margin percentage to a float (e.g., 15.0 -> 0.15).
+        2.3) Constructs the Prolog query string assess_risk(0.15, ..., 100000.0, RiskLevel).
+        2.4) Executes the query using list(prolog.query(query)).
+        2.5) Robustly parses the result list, checking for the RiskLevel key as either a string or bytes, and decoding bytes if necessary.
+        2.6) Returns the RiskLevel string (e.g., 'low') or an error string ('error_in_assessment', 'undefined_risk_profile') if issues occur.
 
 ## 6.0 - Streamlit User Interface (app.py)
 The app.py script creates the user experience:
@@ -100,8 +101,7 @@ The app.py script creates the user experience:
     • Function Call: When the form is submitted, it calls utils.prolog_interface.assess_risk with the mapped inputs.
     • Results Display:
     • Shows the final risk level using st.success, st.warning, or st.error based on the returned value ('low', 'medium', 'high').
-    • Displays specific error messages if 'error_in_assessment' or 'undefined_risk_profile' is returned.
-    • If the risk is 'high', it displays the mitigation suggestions from mitigation_suggestions_dict using st.expander for each category, providing actionable advice.
+    • Displays specific error messages if 'error_in_assessment' or 'undefined_risk_profile' is returned. If the risk is 'high', it displays the mitigation suggestions from mitigation_suggestions_dict using st.expander for each category, providing actionable advice.
 
 ## 7.0 - Mitigation Suggestions (app.py)
 For projects classified as "High Risk", the UI presents a list of potential mitigation strategies. These are currently stored in a Python dictionary (mitigation_suggestions_dict) within app.py, based on Table 4 of the specification document. They are grouped by category (e.g., Team Composition, Scope Simplification) and displayed using st.expander elements to keep the interface clean while providing detailed information when needed.
@@ -119,6 +119,12 @@ To run the Streamlit application:
         Bash
         streamlit run app.py
     6) The application will open in your default web browser.
+
+![C2M Profittability Screenshot (Low Risk).png](sample_images/C2M%20Profittability%20Screenshot%20%28Low%20Risk%29.png)
+C2M Assessmemt Tool User Interface (Low Risk Assessment) 
+
+![C2M Profittability Screenshot (High Risk).png](sample_images/C2M%20Profittability%20Screenshot%20%28High%20Risk%29.png)
+C2M Assessmemt Tool User Interface (High Risk Assessment)
 
 ## 9.0 - Project File Descriptions
     • app.py: Main Streamlit script for the UI.
