@@ -1,112 +1,363 @@
 # Implementation for Streamlit-Based Risk Assessment Interface
 
-## 1.0 - Overview:
-This document describes the implementation of a Streamlit-based user interface for C2M's Project Risk and Profitability Assessment system. The system leverages a Prolog backend for its core decision logic, which evaluates project risk based on a set of predefined rules and input parameters derived from C2M's internal financial expertise and project specifications. This interface allows users at C2M to easily input project details and receive an immediate risk classification (Low, Medium, or High), along with mitigation suggestions for high-risk projects.
+### 1.0 - Overview:
+This document describes the implementation of a Streamlit-based user interface for C2M's Project Risk and Profitability Assessment system. 
+The system leverages a Prolog backend for its core decision logic, which evaluates project risk based on a set of predefined rules and input parameters derived from C2M's internal financial expertise and project specifications. 
+This interface allows users at C2M to easily input project details and receive an immediate risk classification (Low, Medium, or High).
 The primary goal is to provide an accessible and user-friendly front-end to the sophisticated, rule-based risk assessment model, ensuring that C2M can efficiently evaluate project viability in line with Swiss architectural industry standards and the firm's financial objectives.
 
-## 2.0 - System Architecture
-The system comprises three main components:
+### 2.0 - System Architecture
+The system is organized into a main application directory, jmarellano93-kpdm_group2_project/, containing the core application logic, dependency information, and the Prolog rule base.
 
-    • prolog/risk_rules.pl: The SWI-Prolog knowledge base containing all the decision logic. It defines the assess_risk/8 predicate, which implements the risk classification rules (High, Medium, Low), profit-based override mechanisms, and the risk downgrade hierarchy.
-    • utils/prolog_interface.py: A Python module using PySWIP to bridge the gap between the Python application and the Prolog engine. It handles loading the risk_rules.pl file and provides the assess_risk(...) Python function to query the Prolog knowledge base.
-    • app.py: The Streamlit application script that provides the web-based user interface. It collects user inputs via a sidebar form, calls the risk assessment logic through prolog_interface.py, and displays the results, including mitigation suggestions for high-risk projects.
+- **A. Directory Structure**:
 
-## 3.0 - Input Parameters
-The system requires the following input parameters, which are collected via the Streamlit interface's sidebar form (st.sidebar.form):
+        jmarellano93-kpdm_group2_project/
+        ├── app.py
+        ├── requirements.txt
+        ├── prolog/
+        │   └── risk_rules.pl
+        ├── sample_images/
+        └── utils/
+            ├── __init__.py
+            └── prolog_interface.py
 
-    Expected Margin (%):
-        • Type: Float (st.number_input, e.g., 15.0 for 15.0%)
-        • Description: The predicted profitability percentage. A critical factor, used in core classification and overrides.
-        • Prolog Data Type: float (converted to 0.xx, e.g., 0.15)
+- **B. Key Files and Their Roles**:
 
-    Project Type:
-        • Type: Enum (st.selectbox)
-        • Options: "Planning & Execution", "Planning Only", "Execution Only"
-        • Description: Defines C2M's scope. "Execution Only" carries specific risks.
-        • Prolog Data Type: atom (planning_and_execution, planning_only, execution_only)
+| Filename                     | Language | File Dependencies                          | File Description                                                                                                                                       |
+|-----------------------------|----------|--------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `app.py`                    | Python   | `streamlit`, `utils.prolog_interface`      | This is the main Streamlit application file. It defines the user interface, handles user inputs, orchestrates the call to the risk assessment logic, and displays the results. |
+| `requirements.txt`          | Text     | None                                       | This file lists the Python package dependencies required for the system to run, notably `streamlit` for the UI and `pyswip` for interacting with the Prolog backend. |
+| `prolog/risk_rules.pl`      | Prolog   | SWI-Prolog                                 | This file contains the Prolog code defining the knowledge base and rules for assessing project risk. It encapsulates C2M's financial expertise and project evaluation criteria. |
+| `utils/__init__.py`         | Python   | None                                       | An empty initialization file, marking the `utils` directory as a Python package.                                                                     |
+| `utils/prolog_interface.py` | Python   | `pyswip`, `os`, `sys`                      | This Python module serves as the bridge between the Streamlit application (`app.py`) and the Prolog rule base (`risk_rules.pl`). It handles the querying of the Prolog engine and the parsing of its results. |
+| `utils/__pycache__/`        | N/A      | N/A                                        | This directory is automatically generated by Python to store compiled bytecode and is not part of the primary source code.                            |
 
-    SIA Complexity Level:
-        • Type: Enum (st.selectbox)
-        • Options: "Level 1 (Lowest Complexity)" to "Level 5 (Highest Complexity)"
-        • Description: Project complexity based on SIA regulations (1-5). Higher levels imply more risk.
-        • Prolog Data Type: integer
 
-    Contract Type:
-        • Type: Enum (st.selectbox)
-        • Options: "Hourly", "Fixed Price"
-        • Description: "Fixed Price" can be riskier, especially with low margins.
-        • Prolog Data Type: atom (hourly, fixed_price)
+The modular structure, with distinct files for the UI, Prolog rules, and the interface layer, promotes separation of concerns. This design approach facilitates easier maintenance and independent development of different system components. For instance, the risk assessment logic in risk_rules.pl can be updated without directly modifying the UI code in app.py, as long as the interface contract defined in utils/prolog_interface.py is maintained.
 
-    Historical Client Relationship:
-        • Type: Enum (st.selectbox)
-        • Options: "Established", "New"
-        • Description: Established relationships are generally less risky.
-        • Prolog Data Type: atom (established, new)
+### 3.0 - System Setup and Dependencies
 
-    Client Type:
-        • Type: Enum (st.selectbox)
-        • Options: "Private", "Government"
-        • Description: Government projects may offer stability but have more regulations.
-        • Prolog Data Type: atom (private, government)
+To operate the C2M Project Risk and Profitability Assessment system, a specific environment and set of software packages are necessary.
 
-    Expected Absolute Profit (CHF):
-        • Type: Float (st.number_input, e.g., 100000.0)
-        • Description: Total expected profit in CHF. Used for the risk override rule (if > CHF 2,000,000).
-        • Prolog Data Type: float or integer
+- **A. Python Environment and Package Installation**:
 
-## 4.0 - Risk Assessment Logic (prolog/risk_rules.pl)
-The project risk is determined by the assess_risk/8 predicate in prolog/risk_rules.pl, following a two-step, rule-based approach:
+The system is developed in Python and relies on external libraries listed in the requirements.txt file. The primary dependencies are:
 
-### 4.1 - Initial Risk Classification (risk_classification/7)
-This predicate sets an initial risk based on specific combinations of inputs, prioritizing High, then Medium, and defaulting to Low:
+    1. streamlit: Used for building and running the interactive web-based user interface.
+    2. pyswip: A Python library that enables communication with a Prolog interpreter, allowing the Python application to query the Prolog knowledge base.
 
-    1) High Risk Conditions: A project is 'high' if any apply: 
-        • Margin < 10% AND (Fixed Price OR SIA ≥ 4)
-        • Execution Only AND (SIA ≥ 4 OR New Client)
-        • Private Client AND New Client AND Margin < 15% 
+These dependencies can be installed using pip, typically with the command pip install -r requirements.txt within a suitable Python environment.   
 
-    2) Medium Risk Conditions: If not High, a project is 'medium' if all apply: 
-        • 10% ≤ Margin ≤ 15% AND
-        • ( (Not Execution Only AND SIA = 3) OR Fixed Price ) 
+- **B. Prolog Interpreter Dependency**
 
-    3) Low Risk (Default): If a project is neither High nor Medium, it is classified as 'low'. This ensures all projects receive a classification. The original specific 'Low Risk' conditions  are implicitly covered, as any project not meeting High or Medium criteria (including the Low Risk exclusion ) will fall into this category.
+- The use of pyswip introduces an implicit but critical dependency: a functioning Prolog interpreter must be installed on the system where the application is run. pyswip itself is an interface and does not include a Prolog engine. SWI-Prolog is a common choice that works with pyswip. This external Prolog environment must be correctly installed and configured such that pyswip can locate and interact with it. Without a compatible Prolog interpreter, the risk assessment functionality, which is central to the application, will fail. This setup requirement is fundamental for the system's core logic execution.
 
-### 4.2 - Profit-Based Override Rules (override_risk/4)
-After the initial classification, override rules can downgrade the risk:
+### 4.0 - User Interface (app.py)
 
-    • Conditions: If (Expected Margin > 20%) OR (Expected Absolute Profit > 2,000,000 CHF).
-    • Action: The risk level is downgraded by one step using the downgrade/2 predicate (High → Medium, Medium → Low, Low → Low).
-    • A cut (!) is used to ensure only one override (or the default) applies.
+The user interface, defined in app.py, provides the means for users to input project data and receive risk assessments.
 
-The assess_risk/8 predicate calls risk_classification/7 and then override_risk/4 to produce the FinalRisk.
+- **A. General Layout**:
 
-## 5.0 - Python-Prolog Interface (utils/prolog_interface.py)
-This module manages the interaction:
+The application utilizes a wide layout configuration, as specified by st.set_page_config(layout="wide"). This provides ample space for displaying information. The interface is divided into a main content area and a sidebar. The main area presents the application's title, "C2M Project Risk and Profitability Assessment," an introductory text explaining the tool's purpose, and the section for displaying assessment results. A caption at the top indicates the tool's version: "C2M Project Risk Assessment Tool | Version 1.0 | Based on specifications dated 02.06.2025".
 
-    1) Initialization: It starts a Prolog() instance and consults the risk_rules.pl file, handling path conversions and ensuring the rules are loaded.
-    2) assess_risk(...) Function:
-        2.1) Accepts the 7 input parameters from app.py.
-        2.2) Converts the margin percentage to a float (e.g., 15.0 -> 0.15).
-        2.3) Constructs the Prolog query string assess_risk(0.15, ..., 100000.0, RiskLevel).
-        2.4) Executes the query using list(prolog.query(query)).
-        2.5) Robustly parses the result list, checking for the RiskLevel key as either a string or bytes, and decoding bytes if necessary.
-        2.6) Returns the RiskLevel string (e.g., 'low') or an error string ('error_in_assessment', 'undefined_risk_profile') if issues occur.
+- **B. Project Input Parameters Form**: 
 
-## 6.0 - Streamlit User Interface (app.py)
-The app.py script creates the user experience:
+User inputs are collected through a form located in the sidebar, introduced by the header "Project Input Parameters" (st.sidebar.header("Project Input Parameters")). The form itself is created using st.sidebar.form("risk_form"). This groups all input fields and ensures they are submitted together.
 
-    • Layout: Uses st.set_page_config(layout="wide") and displays titles and introductory text.
-    • Input Form: Uses st.sidebar.form to group all input widgets on the left.
-    • Mapping: Employs Python dictionaries (pt_map, sia_map, etc.) to translate user-friendly UI selections into Prolog-compatible atoms and integers.
-    • Function Call: When the form is submitted, it calls utils.prolog_interface.assess_risk with the mapped inputs.
-    • Results Display:
-    • Shows the final risk level using st.success, st.warning, or st.error based on the returned value ('low', 'medium', 'high').
-    • Displays specific error messages if 'error_in_assessment' or 'undefined_risk_profile' is returned. If the risk is 'high', it displays the mitigation suggestions from mitigation_suggestions_dict using st.expander for each category, providing actionable advice.
+The form includes the following input fields:
 
-## 7.0 - Mitigation Suggestions (app.py)
-For projects classified as "High Risk", the UI presents a list of potential mitigation strategies. These are currently stored in a Python dictionary (mitigation_suggestions_dict) within app.py, based on Table 4 of the specification document. They are grouped by category (e.g., Team Composition, Scope Simplification) and displayed using st.expander elements to keep the interface clean while providing detailed information when needed.
+1. Expected Margin (%)
+    - UI Label: "Expected Margin (%)"
+    - Widget: st.number_input
+    - Constraints: This field accepts numerical input with a minimum value of -50.0, a maximum value of 100.0, a default value of 15.0, and increments in steps of 0.1.
+    - Help Text: "Predicted profitability percentage."  
+2. Project Type
+    - UI Label: "Project Type"
+    - Widget: st.selectbox
+    - Options: Users can select from "Planning & Execution", "Planning Only", or "Execution Only".
+    - Help Text: "Full project vs. Partial vs Execution only."
+3. SIA Complexity Level
+    - UI Label: "SIA Complexity Level"
+    - Widget: st.selectbox
+    - Options: The available choices are "Level 1 (Lowest Complexity)", "Level 2", "Level 3", "Level 4", and "Level 5 (Highest Complexity)".
+    - Help Text: "Project complexity from 1 to 5 based on SIA regulations."
+4. Contract Type
+    - UI Label: "Contract Type"
+    - Widget: st.selectbox
+    - Options: Selections include "Hourly" and "Fixed Price".
+    - Help Text: "Fixed-price or hourly-based contract."
+5. Historical Client Relationship
+    - UI Label: "Historical Client Relationship"
+    - Widget: st.selectbox
+    - Options: Choices are "Established" or "New".
+    - Help Text: "Previous experience with the client."
+6. Client Type
+    - UI Label: "Client Type"
+    - Widget: st.selectbox
+    - Options: Users can select either "Private" or "Government".
+    - Help Text: "Private individual or government project."
 
-## 8.0 Running the Application
+The design of the input section, primarily using st.selectbox for categorical data and a constrained st.number_input for numerical data, serves a crucial purpose. By offering predefined options and setting bounds for numerical entries, the UI effectively standardizes the inputs. This standardization is vital for the reliability of the backend rule-based system. It ensures that the data passed to the Prolog engine conforms to expected formats and values, minimizing the risk of errors or ambiguities that could arise from free-text entries and thereby enhancing the consistency of risk assessments.
+
+- **C. "Assess Project Risk" Button**:
+
+At the bottom of the input form in the sidebar, a button labeled "Assess Project Risk" (st.form_submit_button("Assess Project Risk", use_container_width=True)) is present. This button, configured to use the full width of its container for better visual integration, triggers the submission of the entered project parameters. Upon clicking this button, the submitted variable in app.py becomes true, initiating the process of mapping these inputs to the format required by the Prolog engine and subsequently calling the risk assessment logic.
+
+- **D. Initial State / Prompt**:
+
+When the application is first loaded, or if the form has not yet been submitted, an informational message is displayed in the main content area: "Please enter your project parameters on the left and click 'Assess Project Risk'." This message is generated using st.info(...) and guides the user on how to interact with the tool.
+
+### 5.0 - Input Parameter Details and Mapping
+
+- **A. Overview**:
+
+The Streamlit user interface is designed with user-friendly labels and selection options. However, the Prolog backend requires these inputs in a specific, often more concise, atomic or numerical format. To bridge this gap, app.py implements a mapping layer that translates the UI selections into the values expected by the Prolog rules. This ensures that the descriptive terms presented to the user are converted into a consistent, machine-readable format that the Prolog engine can process. This decoupling of UI presentation from backend data representation makes the UI more intuitive for users while maintaining the precision required for the logical rules.
+
+- **B. Table: Input Parameter Mapping**:
+
+The following table details the mapping between the UI input fields and their corresponding values used in Prolog queries. The "Expected Margin (%)" is converted from a percentage to a decimal float (e.g., 15% becomes 0.15) within the utils/prolog_interface.py module before being passed to Prolog.
+
+| UI Input Field                | UI Display Value(s)                       | Corresponding Prolog Atom/Value | Brief Description (from UI help text)                         |
+|------------------------------|-------------------------------------------|----------------------------------|---------------------------------------------------------------|
+| Expected Margin (%)          | (Numeric: -50.0 to 100.0)                 | (Numeric, e.g., 0.15 for 15%)    | Predicted profitability percentage.                          |
+| Project Type                 | "Planning & Execution"                    | planning_and_execution           | Full project vs. Partial vs Execution only.                  |
+|                              | "Planning Only"                           | planning_only                    |                                                               |
+|                              | "Execution Only"                          | execution_only                   |                                                               |
+| SIA Complexity Level         | "Level 1 (Lowest Complexity)"             | 1                                | Project complexity from 1 to 5 based on SIA regulations.     |
+|                              | "Level 2"                                 | 2                                |                                                               |
+|                              | "Level 3"                                 | 3                                |                                                               |
+|                              | "Level 4"                                 | 4                                |                                                               |
+|                              | "Level 5 (Highest Complexity)"            | 5                                |                                                               |
+| Contract Type                | "Hourly"                                  | hourly                           | Fixed-price or hourly-based contract.                        |
+|                              | "Fixed Price"                             | fixed_price                      |                                                               |
+| Historical Client Relationship | "Established"                           | established                      | Previous experience with the client.                         |
+|                              | "New"                                     | new                              |                                                               |
+| Client Type                  | "Private"                                 | private                          | Private individual or government project.                    |
+|                              | "Government"                              | government                       |                                                               |
+
+This explicit mapping is fundamental to the system's operation. It acts as a clear translation guide between the user-facing terminology and the precise data formats required by the Prolog engine. Such clarity is essential for developers maintaining or extending the system, for testers designing comprehensive test cases that cover various logical paths in the Prolog rules, and for business analysts verifying that the UI options accurately reflect the intended conditions in the backend logic.
+
+### 6.0 - Risk Assessment Logic (prolog/risk_rules.pl)
+
+- **A. Overview of Prolog Engine's Role**:
+
+The core decision-making capability of the system resides in the prolog/risk_rules.pl file. This file defines a Prolog knowledge base, consisting of facts and rules that encode C2M's internal financial expertise and project risk assessment criteria. When queried, the Prolog engine uses these rules to infer a risk level based on the provided project parameters.
+
+- **B. Main Predicate: assess_risk/7**:
+
+The primary entry point for initiating a risk assessment within the Prolog knowledge base is the assess_risk/7 predicate. Its structure is:
+
+    assess_risk(Margin, ProjectType, SIA, ContractType, ClientRel, ClientType, FinalRisk).
+
+This predicate orchestrates the assessment by first determining an initial risk level using the risk_classification/7 predicate. Subsequently, it applies the override_risk/3 predicate, which may adjust this initial classification based on the project's margin. The final computed risk is unified with the FinalRisk variable.
+
+The definition is as follows :
+
+    assess_risk(Margin, ProjectType, SIA, ContractType, ClientRel, ClientType, FinalRisk) :-
+    risk_classification(Margin, ProjectType, SIA, ContractType, ClientRel, ClientType, InitialRiskLevel),
+    override_risk(InitialRiskLevel, Margin, FinalRisk).
+
+- **C. Initial Risk Determination: risk_classification/7**:
+
+The risk_classification/7 predicate is responsible for assigning an initial risk category (High, Medium, or Low) to a project. Its structure is:
+
+    risk_classification(Margin, ProjectType, SIA, ContractType, ClientRel, ClientType, RiskLevel).
+
+The logic within this predicate evaluates project parameters against a series of conditions. The Prolog rules implement a prioritized, cascading evaluation: high-risk conditions are checked first. If a project meets any high-risk criteria, it is classified as high, and further checks for medium or low risk within this predicate are bypassed for that logical path. Only if no high-risk conditions are met does the evaluation proceed to medium-risk conditions. This hierarchical approach signifies that certain combinations of factors are considered inherently more critical, overriding other considerations at this stage of classification.
+
+- 1. High Risk Conditions
+
+A project is initially classified as high risk if any of the following complex conditions are met :
+
+    The Expected Margin (Margin) is less than 10% (represented as < 0.1 in Prolog) AND (the Contract Type (ContractType) is fixed_price OR the SIA Complexity Level (SIA) is 4 or greater).
+    Prolog code: (Margin < 0.1, (ContractType = fixed_price ; SIA >= 4))
+    
+    The Project Type (ProjectType) is execution_only AND (the SIA Complexity Level (SIA) is 4 or greater OR the Historical Client Relationship (ClientRel) is new).
+    Prolog code: (ProjectType = execution_only, (SIA >= 4 ; ClientRel = new))
+    
+    The Client Type (ClientType) is private AND the Historical Client Relationship (ClientRel) is new AND the Expected Margin (Margin) is less than 15% (represented as < 0.15).
+    Prolog code: (ClientType = private, ClientRel = new, Margin < 0.15)
+
+If any of these conditions hold true, RiskLevel is unified with high using the -> RiskLevel = high ; construct, and the predicate proceeds accordingly.
+
+- 2. Medium Risk Conditions
+
+If none of the high-risk conditions are satisfied, the system then evaluates conditions for medium risk. A project is classified as medium risk if all of the following are true :
+
+    The Expected Margin (Margin) is greater than or equal to 10% AND less than or equal to 15% (inclusive, represented as Margin >= 0.1, Margin =< 0.15).
+    AND ( (The Project Type (ProjectType) is NOT execution_only AND the SIA Complexity Level (SIA) is 3) OR the Contract Type (ContractType) is fixed_price ).
+    Prolog code: (Margin >= 0.1, Margin =< 0.15, ((ProjectType \= execution_only, SIA = 3) ; ContractType = fixed_price))
+    
+    If these conditions are met, RiskLevel is unified with medium via -> RiskLevel = medium ;.
+
+- 3. Low Risk Condition
+
+If a project does not meet any of the specified high-risk or medium-risk conditions, it defaults to a low risk classification :
+
+    Prolog code: RiskLevel = low.
+
+This default ensures that every project receives an initial risk classification.
+
+- **D. Margin-Based Override: override_risk/3**:
+
+The override_risk/3 predicate provides a mechanism to adjust the InitialRiskLevel (determined by risk_classification/7) based on the project's expected margin. Its structure is:
+override_risk(RiskLevel, Margin, FinalRisk).
+
+This rule can potentially downgrade the risk level:
+
+    If the Expected Margin (Margin) is 20% or greater (represented as >= 0.20), the InitialRiskLevel is passed to the downgrade/2 predicate, which determines the FinalRisk. A Prolog cut (!) is used after this rule (Margin >= 0.20, downgrade(RiskLevel, FinalRisk),!.). This cut ensures that if this condition is met and a downgrade occurs, Prolog does not attempt to find alternative solutions for override_risk/3, making the margin-based override deterministic when applicable.
+    If the margin is less than 20%, the InitialRiskLevel is carried forward as the FinalRisk without modification: override_risk(RiskLevel, _, RiskLevel).. The underscore (_) indicates that the Margin value is not relevant for this specific clause.
+
+- **E. Risk Downgrade Logic: downgrade/2**:
+
+The downgrade/2 predicate defines the specific rules for how a risk level can be reduced. Its structure is:
+downgrade(InitialRisk, DowngradedRisk). 
+
+The defined downgrade paths are:
+
+    An high risk can be downgraded to medium: downgrade(high, medium).
+    A medium risk can be downgraded to low: downgrade(medium, low).
+    A low risk remains low (it cannot be downgraded further): downgrade(low, low).
+
+The overall risk model, particularly the interaction between override_risk/3 and downgrade/2, indicates a significant emphasis on profitability as a potential risk mitigator. However, this mitigation has defined limits. The override mechanism only considers a high margin (20% or more) as a trigger for re-evaluation and can only downgrade risk, never upgrade it. A project initially classified as low risk will remain low risk regardless of its margin according to this rule. Furthermore, the downgrade is incremental; for example, a high-risk project with a very high margin will be downgraded to medium, not directly to low, in a single step by this margin override. This suggests that while C2M's financial expertise values high profitability, it is not seen as a panacea that negates all other underlying risk factors identified in the risk_classification/7 rules. The deterministic application of this downgrade, enforced by the cut, solidifies this specific aspect of the risk assessment policy.
+
+- **F. Table: Key Prolog Predicates**:
+
+The following table summarizes the main predicates within risk_rules.pl and their roles in the risk assessment process:
+
+| Predicate Name     | Arity | Purpose in Risk Assessment                                                                 |
+|--------------------|-------|---------------------------------------------------------------------------------------------|
+| assess_risk        | 7     | Main entry point; coordinates initial classification and margin-based override.            |
+| risk_classification| 7     | Determines the initial risk level (High, Medium, Low) based on project parameters.         |
+| override_risk      | 3     | Adjusts the initial risk level based on the expected margin, potentially downgrading it.   |
+| downgrade          | 2     | Defines the hierarchy for how risk levels can be reduced (e.g., high to medium).           |
+
+This table serves as a high-level guide to the logical structure of the risk_rules.pl file, aiding in the comprehension of how different rule components contribute to the final risk assessment.
+
+### 7.0 - Python-Prolog Interface (utils/prolog_interface.py)
+
+The utils/prolog_interface.py module is the crucial intermediary that enables the Python-based Streamlit application to communicate with the Prolog backend. 
+
+- **A. Initialization and Prolog File Consultation**: 
+
+Upon loading this module, a global Prolog object from the pyswip library is instantiated: prolog = Prolog(). This object represents the connection to the Prolog engine. 
+
+The script then constructs an absolute path to the risk_rules.pl file. This is achieved by joining the directory of the current file (prolog_interface.py), navigating up one level (..), then into the prolog directory, and finally to risk_rules.pl. The path is also explicitly converted to use forward slashes (.replace("\\", "/")) to ensure compatibility with Prolog's path syntax, regardless of the operating system :
+
+    prolog_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "prolog", "risk_rules.pl")).replace("\\", "/")
+
+This robust method of path construction ensures that the rules file can be reliably located as long as the relative directory structure (utils/ and prolog/ being siblings) is maintained.
+
+The Prolog rules file is then consulted (loaded into the Prolog engine) using the query consult('{prolog_file}'). The list(prolog.query(...)) construct is used to execute this. This process is wrapped in a try...except block to handle potential errors during file consultation, such as the file not being found or containing syntax errors. Diagnostic print statements, such as "Attempting to consult Prolog file:" and "Successfully consulted:", are included to provide feedback on this critical initialization step, which can be valuable for debugging. This initialization sequence ensures that C2M's specific risk rules are loaded and ready before any assessment queries are processed. 
+
+- **B. assess_risk Python Function**:
+
+The primary function exposed by this module is assess_risk. Its definition is:
+
+    def assess_risk(margin_percentage, project_type, sia_complexity, contract_type, client_relationship, client_type):. 
+
+1. Arguments
+
+This function accepts six arguments, which correspond to the user inputs gathered by app.py after they have been mapped to Prolog-compatible string or numerical values:
+
+    margin_percentage (float): The expected margin as a percentage (e.g., 15.0 for 15%).
+    project_type (str): The mapped project type (e.g., 'execution_only').
+    sia_complexity (int): The mapped SIA complexity level (e.g., 1, 2).
+    contract_type (str): The mapped contract type (e.g., 'fixed_price').
+    client_relationship (str): The mapped client relationship (e.g., 'new').
+    client_type (str): The mapped client type (e.g., 'private').
+
+2. Margin Conversion
+
+The input margin_percentage is converted from a percentage value to a decimal float suitable for the Prolog rules (e.g., 15.0 is converted to 0.150). This is done by the line: margin_float = margin_percentage / 100.0. 
+
+3. Query Construction
+
+A Prolog query string is dynamically constructed using an f-string. This query calls the assess_risk/7 predicate defined in risk_rules.pl, passing the (mapped and converted) input parameters. The RiskLevel variable in the Prolog query is the output variable that Prolog will attempt to unify with a value:
+
+    query = f"assess_risk({margin_float}, {project_type}, {sia_complexity}, {contract_type}, {client_relationship}, {client_type}, RiskLevel)". 
+
+4. Query Execution and Result Parsing
+
+The constructed query is executed against the Prolog engine using results = list(prolog.query(query)). Diagnostic print statements log the query being executed and the raw results from Prolog, aiding in troubleshooting. 
+
+If the query yields one or more solutions (if results:):
+
+    The first solution is taken: result_dict = results.
+    The code then attempts to extract the value associated with the RiskLevel variable. It robustly checks for this key as both a string ('RiskLevel') and as bytes (b'RiskLevel'). This anticipates potential variations in how PySWIP might return dictionary keys from Prolog, possibly depending on Prolog version or data encoding.
+    If a risk_value is found and it is an instance of bytes, it is decoded to a UTF-8 string.
+    The processed risk_value (e.g., 'high', 'medium', 'low') is then returned.
+    If the results list contains a solution dictionary but the RiskLevel key is missing or its value is not found, the function returns the string "error_in_assessment".
+
+If the Prolog query returns no solutions (else: block for if results:):
+
+    The function returns the string "undefined_risk_profile". A comment in the code, # This case *should* now be handled by the updated Prolog, but keep as fallback , suggests that the Prolog rules are intended to be comprehensive enough to always provide a risk level, making this return path a fallback for unexpected situations. 
+
+5. Error Handling
+
+A broad try...except Exception as e: block wraps the query execution and result parsing logic. If any exception occurs during this process (e.g., a syntax error in the dynamically generated query, an issue with the Prolog engine itself), the error is caught, printed to the console for debugging, and the function returns the string "error_in_assessment". 
+
+The prolog_interface.py module, therefore, functions as more than just a simple pass-through. It is a vital translation and error-mitigation layer. It correctly formats Python data types into a Prolog query, parses the structured results from Prolog back into a simple string usable by app.py, and gracefully handles a variety of potential issues such as Prolog file loading errors, query execution failures, or unexpected formats in the results from PySWIP. The specific handling for byte-string keys (b'RiskLevel') demonstrates an attention to detail necessary when interfacing between different language environments and their data representations. By returning standardized error strings like "error_in_assessment" or "undefined_risk_profile", it simplifies the error-handling logic required in the main application file (app.py) and contributes to the overall robustness of the system.
+
+### 8.0 - Output and Interpretation
+
+- **A. Display of Results in UI**:
+
+Once the assess_risk function in utils.prolog_interface returns a risk_level string, the app.py script uses this string to present the assessment outcome to the user. The results are displayed under the "Risk Assessment Results" subheader (st.subheader("Risk Assessment Results")) in the main area of the UI. Conditional logic (if/elif/else statements) is used to tailor the message and its visual presentation (e.g., using st.error, st.warning, st.success) according to the risk_level received. 
+
+- **B. Possible Outcomes and UI Messages**:
+
+The system provides distinct feedback for various assessment outcomes:
+
+- High Risk:
+    - Condition: risk_level == "high"
+    - UI Display: An error-styled (typically red) box with the message: **Final Assessed Risk: High**
+    - Accompanying Text: "This project meets the criteria for High Risk. A senior project manager review is required before proceeding."  
+
+- Medium Risk:
+    - Condition: risk_level == "medium"
+    - UI Display: A warning-styled (typically yellow) box with the message: **Final Assessed Risk: Medium**
+    - Accompanying Text: "This project falls into the Medium Risk category. Consider a review before proceeding."  
+
+- Low Risk:
+    - Condition: risk_level == "low"
+    - UI Display: A success-styled (typically green) box with the message: **Final Assessed Risk: Low**
+    - Accompanying Text: "This project is classified as Low Risk and seems financially sound based on the input parameters."  
+
+- Undefined Risk Profile Error:
+    - Condition: risk_level == "undefined_risk_profile"
+    - UI Display: An error-styled box with the message: **Error: The project parameters did not match a defined risk profile.**
+    - Accompanying Text: "This should no longer occur with the updated logic, but if it does, please review inputs or check the Prolog rules."  
+    - This particular message suggests an ongoing effort to ensure the comprehensiveness of the Prolog rules. An "undefined risk profile" signifies that the specific combination of inputs did not lead the Prolog engine to a definitive high, medium, or low classification through its main assess_risk/7 predicate. While the risk_classification/7 predicate in Prolog has a default low risk, this error string originates from prolog_interface.py if the Prolog query itself fails to yield any solution. The note "This should no longer occur with the updated logic" implies that refinements to the Prolog rules aim to cover all valid input permutations, making this error a safeguard for unexpected gaps in logic.
+
+- Assessment Format Error:
+    - Condition: risk_level == "error_in_assessment"
+    - UI Display: An error-styled box with the message: **Final Assessed Risk: Error in assessment format**
+    - Accompanying Text: "There was an issue retrieving or formatting the risk assessment. Please check the console output for details."  
+    - This outcome points to a technical problem within the utils/prolog_interface.py module, likely occurring during the execution of the Prolog query or the parsing of its results.
+
+- Other Unexpected Results:
+    - Condition: An else case, catching any risk_level string not explicitly handled by the preceding conditions.
+    - UI Display: An error-styled box showing: **An unexpected result was returned: {risk_level}** (where {risk_level} is the actual unexpected string received). 
+    - This serves as a general catch-all for any unforeseen return values from the assessment logic, indicating a potential bug or an unhandled state in the system.
+
+- **C. Table: Output Messages and Meanings**:
+
+The following table connects the UI messages displayed to the user with the internal risk_level string returned by the prolog_interface.py module, and provides a brief explanation and recommended user action for each.
+
+| UI Message Category       | Specific UI Message / Indicator                                          | risk_level Value (from prolog_interface.py) | Explanation / Recommended User Action                                                                                      |
+|---------------------------|---------------------------------------------------------------------------|----------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
+| High Risk                 | Red box: **Final Assessed Risk: High**                                   | "high"                                       | Project has significant risk factors. Requires review by a senior project manager before proceeding.                       |
+| Medium Risk               | Yellow box: **Final Assessed Risk: Medium**                              | "medium"                                     | Project has moderate risk. A review is recommended before proceeding.                                                      |
+| Low Risk                  | Green box: **Final Assessed Risk: Low**                                  | "low"                                        | Project is classified as low risk and appears financially sound based on inputs.                                           |
+| Undefined Profile Error   | Red box: **Error: The project parameters did not match a defined risk profile.** | "undefined_risk_profile"                     | Inputs may not align with any rule, or an issue in Prolog logic. Review inputs; if persistent, Prolog rules may need checking. |
+| Assessment Format Error   | Red box: **Final Assessed Risk: Error in assessment format**             | "error_in_assessment"                        | Technical issue during risk assessment (e.g., Prolog query error, result parsing). Check system logs/console for details.  |
+| Unexpected Result         | Red box: **An unexpected result was returned: [value]**                  | (Any other string)                           | An unforeseen value was returned by the assessment logic. This indicates a potential bug or unhandled state. Report to support/devs. |
+
+This table clarifies the meaning of each possible output, enabling users to understand the system's feedback and take appropriate next steps. For support personnel or developers, it links the user-facing messages directly to the internal states of the risk assessment process, facilitating diagnostics.
+
+## 9.0 Running the Application
+
 To run the Streamlit application:
 
     1) Ensure you have Python and SWI-Prolog installed.
@@ -118,18 +369,17 @@ To run the Streamlit application:
     5) Run the Streamlit application:
         Bash
         streamlit run app.py
+
+<p align="center">
+  <img src="sample_images/C2M%20Application%20Terminal%20Screenshot.png" width="50%">
+</p>
+
     6) The application will open in your default web browser.
 
-![C2M Profittability Screenshot (Low Risk).png](sample_images/C2M%20Profittability%20Screenshot%20%28Low%20Risk%29.png)
-C2M Assessmemt Tool User Interface (Low Risk Assessment) 
+<p align="center">
+  <img src="sample_images/C2M%20Profittability%20Screenshot%20%28Low%20Risk%29.png" width="50%">
+</p>
 
-![C2M Profittability Screenshot (High Risk).png](sample_images/C2M%20Profittability%20Screenshot%20%28High%20Risk%29.png)
-C2M Assessmemt Tool User Interface (High Risk Assessment)
-
-## 9.0 - Project File Descriptions
-    • app.py: Main Streamlit script for the UI.
-    • utils/prolog_interface.py: Python-Prolog bridge using PySWIP.
-    • prolog/risk_rules.pl: Core Prolog knowledge base.
-    • utils/__init__.py: Makes utils a Python package.
-    • requirements.txt: Lists Python dependencies (streamlit, pyswip).
-    • Implementation for Streamlit-Based Risk Assessment Interface.md: This documentation file.
+<p align="center">
+  <img src="sample_images/C2M%20Profittability%20Screenshot%20%28High%20Risk%29.png" width="50%">
+</p>
