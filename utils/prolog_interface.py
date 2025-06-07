@@ -16,9 +16,8 @@ try:
     print("Successfully consulted:", prolog_file)
 except Exception as e:
     print(f"ERROR: Failed to consult Prolog file: {e}")
-    # Handle the error appropriately, maybe exit or set a flag
 
-def assess_risk(margin_percentage, project_type, sia_complexity, contract_type, client_relationship, client_type, expected_profit_chf):
+def assess_risk(margin_percentage, project_type, sia_complexity, contract_type, client_relationship, client_type):
     """
     Queries the Prolog knowledge base to assess project risk.
     Args:
@@ -28,7 +27,6 @@ def assess_risk(margin_percentage, project_type, sia_complexity, contract_type, 
         contract_type (str): e.g., 'fixed_price'.
         client_relationship (str): e.g., 'new'.
         client_type (str): e.g., 'private'.
-        expected_profit_chf (float): Expected absolute profit in CHF.
     Returns:
         str: The final assessed risk level ('high', 'medium', 'low') or an error string.
     """
@@ -36,7 +34,7 @@ def assess_risk(margin_percentage, project_type, sia_complexity, contract_type, 
     margin_float = margin_percentage / 100.0
 
     # Ensure project_type and other atoms are passed as Prolog atoms (lowercase strings)
-    query = f"assess_risk({margin_float}, {project_type}, {sia_complexity}, {contract_type}, {client_relationship}, {client_type}, {expected_profit_chf}, RiskLevel)"
+    query = f"assess_risk({margin_float}, {project_type}, {sia_complexity}, {contract_type}, {client_relationship}, {client_type}, RiskLevel)"
 
     print(f"Executing Prolog query: {query}")
 

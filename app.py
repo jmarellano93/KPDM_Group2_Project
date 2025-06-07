@@ -18,7 +18,6 @@ with st.sidebar.form("risk_form"):
     contract_ui = st.selectbox("Contract Type", ["Hourly", "Fixed Price"], help="Fixed-price or hourly-based contract.")
     rel_ui = st.selectbox("Historical Client Relationship", ["Established", "New"], help="Previous experience with the client.")
     client_ui = st.selectbox("Client Type", ["Private", "Government"], help="Private individual or government project.")
-    profit_chf = st.number_input("Expected Absolute Profit (CHF)", min_value=0.0, value=100000.0, step=1000.0, help="Expected profit in CHF for override rules.")
 
     submitted = st.form_submit_button("Assess Project Risk", use_container_width=True)
 
@@ -34,21 +33,6 @@ sia_map = {
 contract_map = {"Fixed Price": "fixed_price", "Hourly": "hourly"}
 rel_map = {"New": "new", "Established": "established"}
 client_map = {"Private": "private", "Government": "government"}
-
-# --- Mitigation Suggestions (from Table 4) --- [cite: 87, 258]
-mitigation_suggestions_dict = {
-    "Team Composition": ["Reassign to senior staff for critical tasks", "Replace expensive employees with lower-cost staff"],
-    "Resource Allocation": ["Reduce work hours on less critical tasks", "Increase allocation on bottleneck phases"],
-    "Timeline Adjustments": ["Extend project duration to avoid overtime", "Redistribute deadlines across employees"],
-    "Scope Simplification": ["Eliminate non-essential design features", "Simplify façade geometry or interior detailing"],
-    "Outsourcing": ["Outsource structural analysis or 3D visualization", "Hire external consultants only for specialized input"],
-    "Material Substitution": ["Replace custom or imported materials with standard local options"],
-    "Contract Type Change": ["Propose switching from fixed-price to hourly billing for parts of the work"],
-    "Client Coordination": ["Limit scope creep via fixed design rounds", "Set client deadlines for feedback"],
-    "Alternative Design Options": ["Offer two design variants: one standard (cost-effective), one premium"],
-    "Parallel Task Planning": ["Reorganize phases to run concurrently (e.g., technical detailing while approvals pending)"],
-    "Phase Splitting": ["Break large project into smaller contracts (e.g., planning → execution as separate projects)"]
-}
 
 
 st.subheader("Risk Assessment Results")
@@ -68,18 +52,13 @@ if submitted:
         sia_level_prolog,
         contract_prolog,
         rel_prolog,
-        client_prolog,
-        profit_chf
+        client_prolog
     )
 
     # Display results
     if risk_level == "high":
         st.error(f"**Final Assessed Risk: High**")
-        st.write("This project meets the criteria for High Risk. Please review the following mitigation suggestions:")
-        for category, actions in mitigation_suggestions_dict.items():
-            with st.expander(f"**{category}**"):
-                for action in actions:
-                    st.write(f"- {action}")
+        st.write("This project meets the criteria for High Risk. A senior project manager review is required before proceeding.")
     elif risk_level == "medium":
         st.warning(f"**Final Assessed Risk: Medium**")
         st.write("This project falls into the Medium Risk category. Consider a review before proceeding.")

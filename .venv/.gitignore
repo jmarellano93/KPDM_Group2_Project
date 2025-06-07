@@ -1,0 +1,37 @@
+# Bytecode files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+env/
+*.egg-info/
+
+# PyCharm IDE settings
+.idea/
+
+# Large or generated data files
+*.csv
+*.tsv
+*.xlsx
+*.fasta
+*.fastq
+*.bam
+*.vcf
+*.hdf5
+*.log
+*.tmp
+
+# Packaging
+build/
+dist/
+*.egg
+*.whl
+
+# Backups or swap files
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
